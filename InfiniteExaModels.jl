@@ -1,7 +1,6 @@
 import InfiniteOpt, JuMP, ExaModels
 import MathOptInterface as _MOI
 import InfiniteOpt.TranscriptionOpt as _TO
-using Base.Meta
 
 struct MappingData
     # Mappings
@@ -97,7 +96,7 @@ function _get_variable_bounds(vref)
     return lb, ub
 end
 
-# All the finite variables from an InfiniteModel to a ExaCore
+# Add all the finite variables from an InfiniteModel to a ExaCore
 function _add_finite_variables(
     core::ExaModels.ExaCore, 
     data::MappingData,
@@ -119,7 +118,7 @@ function _add_finite_variables(
     return
 end
 
-# All the infinite variables from an InfiniteModel to a ExaCore
+# Add all the infinite variables from an InfiniteModel to a ExaCore
 function _add_infinite_variables(
     core::ExaModels.ExaCore, 
     data::MappingData,
@@ -157,7 +156,7 @@ function _add_infinite_variables(
     return 
 end
 
-# All the point variables from an InfiniteModel to a ExaCore
+# Add all the point variables from an InfiniteModel to a ExaCore
 function _add_point_variables(
     core::ExaModels.ExaCore, 
     data::MappingData,
@@ -176,6 +175,25 @@ function _add_point_variables(
         group_idxs = InfiniteOpt._object_numbers(ivref)
         idxs = Tuple(data.support_to_index[i, s] for (i, s) in zip(group_idxs, supp))
         data.finvar_mappings[vref] = data.infvar_mappings[ivref][idxs...]
+    end
+    return 
+end
+
+# Add all the semi-infinite variables from an InfiniteModel to a ExaCore
+function _add_semi_infinite_variables(
+    core::ExaModels.ExaCore, 
+    data::MappingData,
+    inf_model::InfiniteOpt.InfiniteModel
+    )
+    for vref in JuMP.all_variables(inf_model, InfiniteOpt.SemiInfiniteVariable)
+        # check if is continuous
+        if JuMP.is_binary(vref) || JuMP.is_integer(vref)
+            error("Integer variables not supported by ExaModels.")
+        end
+        # TODO account for changes in bounds and start
+        # store the needed information to later map semi-infinite variables
+        ivref = InfiniteOpt.infinite_variable_ref(vref)
+        # TODO finish
     end
     return 
 end
@@ -291,9 +309,10 @@ function build_exa_core!(
     inf_model::InfiniteOpt.InfiniteModel
     )
     _build_base_iterators(data, inf_model)
-    InfiniteOpt.expand_all_measures!(inf_model)
+    # InfiniteOpt.expand_all_measures!(inf_model)
     _add_finite_variables(core, data, inf_model)
     _add_infinite_variables(core, data, inf_model)
+    _add_semi_infinite_variables(core, data, inf_model)
     _add_point_variables(core, data, inf_model)
     _add_constraints(core, data, inf_model)
     return

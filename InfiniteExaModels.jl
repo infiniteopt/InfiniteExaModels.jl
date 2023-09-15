@@ -5,7 +5,8 @@ using Base.Meta
 
 struct MappingData
     # Mappings
-    variable_mappings::Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Variable}
+    infvar_mappings::Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Variable}
+    finvar_mappings::Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Var}
     constraint_mappings::Dict{InfiniteOpt.InfOptConstraintRef, ExaModels.Constraint}
 
     # Helpful metadata
@@ -13,18 +14,17 @@ struct MappingData
     group_alias::Vector{Symbol}
     base_itrs::Vector{Any}
     support_to_index::Dict{Tuple{Int, Union{Float64, Vector{Float64}}}, Int}
-    point_info::Dict{InfiniteOpt.GeneralVariableRef, Tuple}
     
     # Default constructor
     function MappingData()
         return new(
             Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Variable}(),
+            Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Var}(),
             Dict{InfiniteOpt.InfOptConstraintRef, ExaModels.Constraint}(),
             Dict{InfiniteOpt.GeneralVariableRef, Symbol}(),
             Symbol[],
             [],
             Dict{Tuple{Int, Union{Float64, Vector{Float64}}}, Int}(),
-            Dict{InfiniteOpt.GeneralVariableRef, Tuple}(),
         )
     end
 end
@@ -69,11 +69,10 @@ function _build_base_iterators(
             data.support_to_index[group_idx, s] = i
         end
         # create the iterator which is a tuple of named tuples
-        # note: the `one` field is needed to have a `1` to index finite variables with
         if aliases isa Vector
-            itr = Tuple((; itr_sym => i, :one => 1, zip(aliases, s)...) for (i, s) in enumerate(supps))
+            itr = Tuple((; itr_sym => i, zip(aliases, s)...) for (i, s) in enumerate(supps))
         else
-            itr = Tuple((; itr_sym => i, :one => 1, aliases => s) for (i, s) in enumerate(supps))
+            itr = Tuple((; itr_sym => i, aliases => s) for (i, s) in enumerate(supps))
         end
         # add the iterator to `data`
         push!(data.base_itrs, itr)
@@ -115,7 +114,7 @@ function _add_finite_variables(
         lb, ub = _get_variable_bounds(vref)
         # make the ExaModel variable
         new_var = ExaModels.variable(core, 1, start = start, lvar = lb, uvar = ub)
-        data.variable_mappings[vref] = new_var
+        data.finvar_mappings[vref] = new_var[1]
     end
     return
 end
@@ -153,7 +152,7 @@ function _add_infinite_variables(
         lb, ub = _get_variable_bounds(vref)
         # create the ExaModels variable
         new_var = ExaModels.variable(core, dims...; start = starts, lvar = lb, uvar = ub)
-        data.variable_mappings[vref] = new_var
+        data.infvar_mappings[vref] = new_var
     end
     return 
 end
@@ -174,9 +173,9 @@ function _add_point_variables(
         ivref = InfiniteOpt.infinite_variable_ref(vref)
         raw_supp = InfiniteOpt.raw_parameter_values(vref)
         supp = Tuple(raw_supp, InfiniteOpt.raw_parameter_refs(ivref), use_indices = false)
-        group_idxs = InfiniteOpt._object_nums(ivref)
+        group_idxs = InfiniteOpt._object_numbers(ivref)
         idxs = Tuple(data.support_to_index[i, s] for (i, s) in zip(group_idxs, supp))
-        data.point_info[vref] = (ivref, idxs)
+        data.finvar_mappings[vref] = data.infvar_mappings[ivref][idxs...]
     end
     return 
 end
@@ -190,8 +189,8 @@ function _map_variable(
     vref, 
     ::Type{V}, 
     data
-    ) where V <: InfiniteOpt.FiniteVariableIndex
-    return :($(data.variable_mappings[vref])[p.one]) # all iterators must have the `one` field
+    ) where V <: Union{InfiniteOpt.FiniteVariableIndex, InfiniteOpt.PointVariableIndex}
+    return data.finvar_mappings[vref]
 end
 function _map_variable(
     vref, 
@@ -199,18 +198,9 @@ function _map_variable(
     data
     ) where V <: InfiniteOpt.InfiniteVariableIndex
     group_idxs = InfiniteOpt._object_numbers(vref)
-    ex = Expr(:ref, :($(data.variable_mappings[vref])))
-    append!(ex.args, :(p.$(data.group_alias[i])) for i in group_idxs) # TODO: fix --> This will lead to errors...
+    ex = Expr(:ref, :($(data.infvar_mappings[vref])))
+    append!(ex.args, :(p.$(data.group_alias[i])) for i in group_idxs)
     return ex
-end
-function _map_variable(
-    vref, 
-    ::Type{V}, 
-    data
-    ) where V <: InfiniteOpt.PointVariableIndex
-    ivref, idxs = data.point_info[vref]
-    ex = Expr(:ref, :($(data.variable_mappings[ivref])))
-    append!(ex.args, i for i in idxs)
 end
 function _map_variable(
     vref, 
@@ -224,7 +214,7 @@ function _map_variable(
     ::Type{V}, 
     data
     ) where V <: InfiniteOpt.FiniteParameterIndex
-    return :($(InfiniteOpt.parameter_value(vref)))
+    return InfiniteOpt.parameter_value(vref)
 end
 function _map_variable(
     vref, 
@@ -276,7 +266,7 @@ function _add_constraints(
         # make the expression generator
         func = _make_expr_gen_func(expr, data)
         if isempty(group_idxs) # we have a finite constraint
-            itr = ((one = 1,),)
+            itr = ((;),)
         elseif length(group_idxs) == 1 # we only depend on one independent infinite parameter
             itr = data.base_itrs[first(group_idxs)]
         else # we depend on multiple independent infinite parameters

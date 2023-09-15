@@ -9,6 +9,6 @@ im = InfiniteModel()
 @variable(im, z == 5)
 @constraint(im, c1, sin(y) + 2z + t == 0)
 @constraint(im, c2, q^2 - y + ξ[2] <= 2)
-@constraint(im, c3, z^3 >= 2)
+@constraint(im, c3, z^3 + y(0) >= 2)
 
 em, d = exa_model(im)

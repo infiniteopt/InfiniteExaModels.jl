@@ -11,4 +11,5 @@ ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
 [compat]
 Ipopt = "1"
 julia = 1.9
-
+JuMP = "1.15"
+ExaModels = "0.4"

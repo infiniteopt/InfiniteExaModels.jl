@@ -3,5 +3,5 @@ The conversion API is in `InfiniteExaModels.jl` and the principal method is `exa
 an `ExaModel` from an `InfiniteModel`. 
 
 ## Dependencies
-The necessary packages are provided in `Project.toml`, but note that the compat hasn't been set up yet. 
-Currently, the `master` branch of JuMP and the `jump_nlp` branch of InfiniteOpt are required.
+The necessary packages are provided in `Project.toml`, but note that the compat is a little loose. 
+Currently, the `jump_nlp` branch of InfiniteOpt is required.

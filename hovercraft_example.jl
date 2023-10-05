@@ -25,7 +25,7 @@ end)
 # Create the ExaModel and solve both models to compare
 em, mappings = exa_model(im)
 optimize!(im)
-result = ipopt(em)
+result = ipopt(em, print_level = 0)
 
 # Print a report
 println("\n--------------------------------------------")

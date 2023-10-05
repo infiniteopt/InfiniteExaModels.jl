@@ -297,8 +297,8 @@ end
 function _get_constr_bounds(set::_MOI.GreaterThan)
     return set.lower, Inf
 end
-function _get_constr_bounds(::_MOI.EqualTo)
-    return 0, 0
+function _get_constr_bounds(set::_MOI.EqualTo)
+    return set.value, set.value
 end
 function _get_constr_bounds(set::_MOI.Interval)
     return set.lower, set.upper
@@ -399,7 +399,6 @@ function _add_deriv_equations(core, dref, data, method::InfiniteOpt.FiniteDiffer
     pref_itr = _finite_diff_itr(method, srt_itr, p_alias)
     itrs = [g == pref_group ? pref_itr : data.base_itrs[g] for g in group_idxs]
     itr = Tuple(merge(i...) for i in Iterators.product(itrs...))
-    println(itr)
     # make the expression function for the generator
     # d_ex = _map_variable(dref, data)
     # v1_ex = _map_variable(vref, data)
@@ -409,6 +408,7 @@ function _add_deriv_equations(core, dref, data, method::InfiniteOpt.FiniteDiffer
     # func_ex = :(p -> $d_ex * p.dt - $v1_ex + $v2_ex)
     # f = _make_gen_func(func_ex) # TODO this isn't giving a proper julia function...
     # temp hack for single parameter
+    length(itrs) > 1 && error("Hack assumption violated") # TODO remove once the above problem is fixed
     dvar = data.infvar_mappings[dref]
     ivar = data.infvar_mappings[vref]
     f = p -> dvar[p[1]] * p.dt - ivar[p.i1] + ivar[p.i2]

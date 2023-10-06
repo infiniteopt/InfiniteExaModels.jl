@@ -69,12 +69,8 @@ function _build_base_iterators(
         for (i, s) in enumerate(supps)
             data.support_to_index[group_idx, s] = i
         end
-        # create the iterator which is a tuple of named tuples
-        if aliases isa Vector
-            itr = Tuple((; itr_sym => i, zip(aliases, s)...) for (i, s) in enumerate(supps))
-        else
-            itr = Tuple((; itr_sym => i, aliases => s) for (i, s) in enumerate(supps))
-        end
+        # create the iterator which is a vector of named tuples
+        itr = [(; itr_sym => i, zip(aliases, s)...) for (i, s) in enumerate(supps)]
         # add the iterator to `data`
         push!(data.base_itrs, itr)
     end
@@ -161,10 +157,36 @@ function _add_infinite_variables(
     return 
 end
 
+# Helper function for processing semi-infinite variables
+function _process_semi_infinite_var(vref, data)
+    # get basic info from InfiniteOpt
+    ivref = InfiniteOpt.infinite_variable_ref(vref)
+    orig_group_idxs = InfiniteOpt._object_numbers(ivref)
+    raw_prefs = InfiniteOpt.raw_parameter_refs(ivref) # type `InfiniteOpt.VectorTuple`
+    group_idxs = InfiniteOpt._object_numbers(vref)
+    eval_supps = InfiniteOpt.eval_supports(vref)
+    # create metadata vector `indexing` 
+    indexing = Vector{Any}(undef, length(orig_group_idxs))
+    for (i, g) in enumerate(orig_group_idxs)
+        if g in group_idxs
+            indexing[i] = data.group_alias[g] # get the group alias for indexing
+        elseif isnothing(raw_prefs.indices[i])
+            pref_ind = first(raw_prefs.ranges[i])
+            supp = eval_supps[pref_ind]
+            indexing[i] = data.support_to_index[g, supp] # store the support index
+        else
+            pref_inds = raw_prefs.ranges[i]
+            supp = [eval_supps[i] for i in pref_inds]
+            indexing[i] = data.support_to_index[g, supp] # store the support index
+        end
+    end
+    # return the desired metadata
+    return data.infvar_mappings[ivref], indexing
+end
+
 # Add all the semi-infinite variables from an InfiniteModel to a ExaCore
 # In other words, create helpful metadata to be used by `_map_variable`
 function _add_semi_infinite_variables(
-    core::ExaModels.ExaCore, 
     data::MappingData,
     inf_model::InfiniteOpt.InfiniteModel
     )
@@ -174,36 +196,24 @@ function _add_semi_infinite_variables(
         #     error("Integer variables are not supported by ExaModels.")
         # end
         # TODO account for changes in bounds and start
-        # collect the basic information fields from InfiniteOpt
-        ivref = InfiniteOpt.infinite_variable_ref(vref)
-        orig_group_idxs = InfiniteOpt._object_numbers(ivref)
-        raw_prefs = InfiniteOpt.raw_parameter_refs(ivref) # type `InfiniteOpt.VectorTuple`
-        group_idxs = InfiniteOpt._object_numbers(vref)
-        eval_supps = InfiniteOpt.eval_supports(vref)
-        # create metadata vector `indexing` 
-        indexing = Vector{Any}(undef, length(orig_group_idxs))
-        for (i, g) in enumerate(orig_group_idxs)
-            if g in group_idxs
-                indexing[i] = data.group_alias[g] # get the group alias for indexing
-            elseif isnothing(raw_prefs.indices[i])
-                pref_ind = first(raw_prefs.ranges[i])
-                supp = eval_supps[pref_ind]
-                indexing[i] = data.support_to_index[g, supp] # store the support index
-            else
-                pref_inds = raw_prefs.ranges[i]
-                supp = [eval_supps[i] for i in pref_inds]
-                indexing[i] = data.support_to_index[g, supp] # store the support index
-            end
-        end
-        # save the metadata
-        data.semivar_info[vref] = (data.infvar_mappings[ivref], indexing)
+        # collect the basic information fields from InfiniteOpt and save
+        data.semivar_info[vref] = _process_semi_infinite_var(vref, data)
     end
     return 
 end
 
+# Helper function for processing point variables
+function _process_point_var(vref, data)
+    ivref = InfiniteOpt.infinite_variable_ref(vref)
+    raw_supp = InfiniteOpt.raw_parameter_values(vref)
+    supp = Tuple(raw_supp, InfiniteOpt.raw_parameter_refs(ivref), use_indices = false)
+    group_idxs = InfiniteOpt._object_numbers(ivref)
+    idxs = Tuple(data.support_to_index[i, s] for (i, s) in zip(group_idxs, supp))
+    return data.infvar_mappings[ivref][idxs...]
+end
+
 # Add all the point variables from an InfiniteModel to a ExaCore
 function _add_point_variables(
-    core::ExaModels.ExaCore, 
     data::MappingData,
     inf_model::InfiniteOpt.InfiniteModel
     )
@@ -214,12 +224,7 @@ function _add_point_variables(
         end
         # TODO account for changes in bounds and start
         # store the index mapping for the point variable
-        ivref = InfiniteOpt.infinite_variable_ref(vref)
-        raw_supp = InfiniteOpt.raw_parameter_values(vref)
-        supp = Tuple(raw_supp, InfiniteOpt.raw_parameter_refs(ivref), use_indices = false)
-        group_idxs = InfiniteOpt._object_numbers(ivref)
-        idxs = Tuple(data.support_to_index[i, s] for (i, s) in zip(group_idxs, supp))
-        data.finvar_mappings[vref] = data.infvar_mappings[ivref][idxs...]
+        data.finvar_mappings[vref] = _process_point_var(vref, data)
     end
     return 
 end
@@ -233,8 +238,21 @@ function _map_variable(
     vref, 
     ::Type{V}, 
     data
-    ) where V <: Union{InfiniteOpt.FiniteVariableIndex, InfiniteOpt.PointVariableIndex}
+    ) where V <: Union{InfiniteOpt.FiniteVariableIndex}
     return data.finvar_mappings[vref]
+end
+function _map_variable(
+    vref, 
+    ::Type{V}, 
+    data
+    ) where V <: Union{InfiniteOpt.PointVariableIndex}
+    if haskey(data.finvar_mappings, vref) 
+        return data.finvar_mappings[vref]
+    else
+        var = _process_point_var(vref, data)
+        data.finvar_mappings[vref] = var # TODO consider whether we want to save this or not
+        return var
+    end
 end
 function _map_variable(
     vref, 
@@ -251,7 +269,12 @@ function _map_variable(
     ::Type{V}, 
     data
     ) where V <: InfiniteOpt.SemiInfiniteVariableIndex
-    ivar, inds = data.semivar_info[vref]
+    if haskey(data.semivar_info, vref)
+        ivar, inds = data.semivar_info[vref]
+    else
+        ivar, inds = _process_semi_infinite_var(vref, data)
+        data.semivar_info[vref] = (ivar, inds) # TODO consider whether we should save this
+    end
     ex = Expr(:ref, :($ivar))
     append!(ex.args, i isa Int ? i : :(p.$i) for i in inds)
     return ex
@@ -279,6 +302,12 @@ function _map_variable(
 end
 
 # Make an a julia function for generators of the form `p -> expr` where `p` is a namedtuple
+function _make_expr_ast(expr, data)
+    # TODO add operator mapper argument
+    return InfiniteOpt.map_expression_to_ast(v -> _map_variable(v, data), expr)
+end
+
+# Make generator function from AST expression
 function _make_gen_func(expr_code)
     func_code = :(p -> $expr_code) # p is a namedtuple with all the parameters
     return x -> Base.invokelatest(eval(func_code), x)
@@ -286,8 +315,7 @@ end
 
 # Construct a Julia function that is compatible with a generator for building ExaModels
 function _make_expr_gen_func(expr, data)
-    expr_code = InfiniteOpt.map_expression_to_ast(v -> _map_variable(v, data), expr) # TODO add operator mapper argument
-    return _make_gen_func(expr_code)
+    return _make_gen_func(_make_expr_ast(expr, data))
 end
 
 # Extract the constraint bounds from an MOI set
@@ -318,18 +346,22 @@ function _add_constraints(
         InfiniteOpt._is_info_constraint(cref) && continue
         # parse the basic information
         constr = JuMP.constraint_object(cref)
-        expr = JuMP.jump_function(constr)
+        if isempty(inf_model.constraints[JuMP.index(cref)].measure_indices)
+            expr = JuMP.jump_function(constr)
+        else
+            expr = InfiniteOpt.expand_measures(JuMP.jump_function(constr), inf_model)
+        end
         set = JuMP.moi_set(constr)
         group_idxs = InfiniteOpt._object_numbers(cref)
         # make the expression generator
         func = _make_expr_gen_func(expr, data)
         if isempty(group_idxs) # we have a finite constraint
-            itr = ((;),)
+            itr = [(;)]
         elseif length(group_idxs) == 1 # we only depend on one independent infinite parameter
             itr = data.base_itrs[first(group_idxs)]
         else # we depend on multiple independent infinite parameters
             itrs = map(i -> data.base_itrs[i], group_idxs)
-            itr = Tuple(merge(i...) for i in Iterators.product(itrs...))
+            itr = [merge(i...) for i in Iterators.product(itrs...)]
         end
         # TODO account for DomainRestrictions
         gen = Base.Generator(func, itr)
@@ -349,7 +381,7 @@ function _finite_diff_itr(
     p_alias
     )
     offset = zip(Iterators.drop(srt_itr, 1), srt_itr) # current, previous
-    itr = Tuple(merge(p1, (; dt = p1[p_alias] - p2[p_alias], i1 = p1[1], i2 = p2[1])) for (p1, p2) in offset)
+    itr = [merge(p1, (; dt = p1[p_alias] - p2[p_alias], i1 = p1[1], i2 = p2[1])) for (p1, p2) in offset]
     return method.add_boundary_constraint ? itr : itr[1:end-1]
 end
 function _finite_diff_itr(
@@ -358,7 +390,7 @@ function _finite_diff_itr(
     p_alias
     )
     offset = zip(Iterators.drop(srt_itr, 1), srt_itr) # next, current
-    itr = Tuple(merge(p2, (; dt = p1[p_alias] - p2[p_alias], i1 = p1[1], i2 = p2[1])) for (p1, p2) in offset)
+    itr = [merge(p2, (; dt = p1[p_alias] - p2[p_alias], i1 = p1[1], i2 = p2[1])) for (p1, p2) in offset]
     return method.add_boundary_constraint ? itr : itr[2:end]
 end
 function _finite_diff_itr(
@@ -367,7 +399,7 @@ function _finite_diff_itr(
     p_alias
     )
     offset = zip(Iterators.drop(srt_itr, 2), Iterators.drop(srt_itr, 1), srt_itr) # next, current, prev
-    return Tuple(merge(pc, (; dt = p1[p_alias] - p2[p_alias], i1 = p1[1], i2 = p2[1])) for (p1, pc, p2) in offset)
+    return [merge(pc, (; dt = p1[p_alias] - p2[p_alias], i1 = p1[1], i2 = p2[1])) for (p1, pc, p2) in offset]
 end
 function _finite_diff_itr(method, srt_itr, p_alias)
     error("Unsupported finite difference approximation technique `$(method.technique)`.")
@@ -391,7 +423,7 @@ function _add_deriv_equations(core, dref, data, method::InfiniteOpt.FiniteDiffer
     end
     pref_itr = _finite_diff_itr(method, srt_itr, p_alias)
     itrs = [g == pref_group ? pref_itr : data.base_itrs[g] for g in group_idxs]
-    itr = Tuple(merge(i...) for i in Iterators.product(itrs...))
+    itr = [merge(i...) for i in Iterators.product(itrs...)]
     # make the expression function for the generator
     dvar = data.infvar_mappings[dref]
     if vref.index_type == InfiniteOpt.SemiInfiniteVariableIndex
@@ -429,29 +461,88 @@ function _add_derivative_approximations(
     return
 end
 
-# Create a generator for objective functions
-# TODO make clever dispatches to leverage measure stuctures
-function _make_obj_gen(expr, data, is_min) # fallback
-    if !is_min
-        expr = -expr
-    end
+# Write a finite expression `expr` in a single objective term (this is a generic fallback)
+function _add_generic_objective_term(core, expr, data)
     func = _make_expr_gen_func(expr, data)
-    return Base.Generator(func, ((;),))
+    ExaModels.objective(core, Base.Generator(func, [(;)]))
+    return
+end
+
+# Helper function for adding affine terms as independent objective terms
+function _add_objective_aff_term(core, coef, vref, data)
+    return _add_objective_aff_term(core, coef, vref, vref.index_type, data)
+end
+function _add_objective_aff_term(core, coef, vref, ::Type{InfiniteOpt.MeasureIndex}, data)
+    meas_expr = InfiniteOpt.measure_function(vref)
+    vrefs = InfiniteOpt._all_function_variables(meas_expr)
+    if all(v.index_type != InfiniteOpt.MeasureIndex for v in vrefs) # single measure without measures inside of it
+        mdata = InfiniteOpt.measure_data(vref)
+        prefs = InfiniteOpt.parameter_refs(mdata) # either a single ref or a vector of refs
+        if prefs isa Vector
+            supps = eachcol(InfiniteOpt.supports(mdata))
+        else
+            supps = InfiniteOpt.supports(mdata)
+        end
+        w = InfiniteOpt.weight_function(mdata)
+        coeffs = InfiniteOpt.coefficients(mdata) .* w.(supps)
+        prefs = InfiniteOpt.parameter_refs(mdata) # either a single ref or a vector of refs
+        group = InfiniteOpt._object_number(first(prefs))
+        @assert length(prefs) == length(first(data.base_itrs[group])) - 1 # we don't allow partially measured dependent parameters
+        alias = data.group_alias[group]
+        aliases = map(p -> data.param_alias[p], prefs)
+        itr = [(; alias => data.support_to_index[group, s], :c => c, zip(aliases, s)...) for (c, s) in zip(coeffs, supps)]
+        expr_code = _make_expr_ast(meas_expr, data)
+        func = _make_gen_func(:($coef * p.c * $expr_code))
+        ExaModels.objective(core, Base.Generator(func, itr))
+    # TODO add more clever conditions to avoid the fallback
+    else # fallback to adding the expansion
+        _add_generic_objective_term(core, coef * InfiniteOpt.expand(vref), data)
+    end
+    return
+end
+function _add_objective_aff_term(core, coef, vref, _, data)
+    _add_generic_objective_term(core, coef * vref, data)
+    return
 end
 
 # Add the objective from an InfiniteModel to an ExaCore
 function _add_objective(
     core::ExaModels.ExaCore,
-    data::MappingData,
+    expr::JuMP.AbstractJuMPScalar,
+    data::MappingData, 
     inf_model::InfiniteOpt.InfiniteModel
     )
-    expr = JuMP.objective_function(inf_model)
-    sense = JuMP.objective_sense(inf_model)
-    sense == _MOI.FEASIBILITY_SENSE && return
-    gen = _make_obj_gen(expr, data, sense == _MOI.MIN_SENSE)
-    ExaModels.objective(core, gen)
+    new_expr = InfiniteOpt.expand_measures(expr, inf_model)
+    _add_generic_objective_term(core, new_expr, data)
     return
 end
+function _add_objective(
+    core::ExaModels.ExaCore,
+    vref::InfiniteOpt.GeneralVariableRef, # can be finite var, point var, finite param, or measure that fully evaluates the measures inside
+    data::MappingData, 
+    ::InfiniteOpt.InfiniteModel
+    )
+    _add_objective_aff_term(core, 1.0, vref, data)
+    return
+end
+function _add_objective(
+    core::ExaModels.ExaCore,
+    aff::JuMP.GenericAffExpr,
+    data::MappingData,
+    ::InfiniteOpt.InfiniteModel
+    )
+    # TODO should we check if there are a lot of terms?
+    for (coef, vref) in JuMP.linear_terms(aff)
+        _add_objective_aff_term(core, coef, vref, data)
+    end
+    c = JuMP.constant(aff)
+    if !iszero(c)
+        error("ExaModels does not support objectives with constant terms.")
+        # ExaModels.objective(core, c for _ in 1:1) # TODO see if we can make this work
+    end
+    return
+end
+
 
 # Fill an ExaCore and MappingData with an InfiniteModel
 function build_exa_core!(
@@ -459,15 +550,24 @@ function build_exa_core!(
     data::MappingData,
     inf_model::InfiniteOpt.InfiniteModel
     )
+    # initial setup
     _build_base_iterators(data, inf_model)
-    InfiniteOpt.expand_all_measures!(inf_model) # TODO do something more clever with measures
+    # add the variables and appropriate mappings
     _add_finite_variables(core, data, inf_model)
-    _add_infinite_variables(core, data, inf_model)
-    _add_semi_infinite_variables(core, data, inf_model)
-    _add_point_variables(core, data, inf_model)
+    _add_infinite_variables(core, data, inf_model) # includes derivatives
+    _add_semi_infinite_variables(data, inf_model)
+    _add_point_variables(data, inf_model)
+    # add the constraints
     _add_constraints(core, data, inf_model)
     _add_derivative_approximations(core, data, inf_model)
-    _add_objective(core, data, inf_model)
+    # add the objective if we have one
+    expr = JuMP.objective_function(inf_model)
+    sense = JuMP.objective_sense(inf_model)
+    if sense == _MOI.MAX_SENSE
+        _add_objective(core, -expr, data, inf_model)
+    elseif sense == _MOI.MIN_SENSE
+        _add_objective(core, expr, data, inf_model)
+    end
     return
 end
 

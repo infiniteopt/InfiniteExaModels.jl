@@ -3,7 +3,7 @@ using InfiniteOpt, Distributions, NLPModelsIpopt, Ipopt, Random
 Random.seed!(42)
 
 # Set the data
-num_scenarios = 10 # small amount for example
+num_scenarios = 1000 # small amount for example
 α = [150, 230, 260] # land cost
 β = [238, 210, 0]   # purchasing cost
 λ = [170, 150, 36]  # selling price
@@ -36,7 +36,7 @@ end)
 end)
 
 # Create the ExaModel and solve both models to compare
-em, mappings = exa_model(im)
+@time em, mappings = exa_model(im)
 optimize!(im)
 result = ipopt(em, print_level = 0)
 

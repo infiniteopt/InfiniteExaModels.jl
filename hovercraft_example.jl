@@ -8,7 +8,7 @@ tw = [0, 25, 50, 60];    # times
 # Define the InfiniteModel
 im = InfiniteModel(Ipopt.Optimizer)
 set_silent(im)
-@infinite_parameter(im, t in [0, 60], num_supports = 21)
+@infinite_parameter(im, t in [0, 60], num_supports = 101)
 @variables(im, begin
     # state variables
     x[1:2], Infinite(t)

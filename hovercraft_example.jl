@@ -8,7 +8,7 @@ tw = [0, 25, 50, 60];    # times
 # Define the InfiniteModel
 im = InfiniteModel(Ipopt.Optimizer)
 set_silent(im)
-@infinite_parameter(im, t in [0, 60], num_supports = 11)
+@infinite_parameter(im, t in [0, 60], num_supports = 21)
 @variables(im, begin
     # state variables
     x[1:2], Infinite(t)
@@ -23,7 +23,7 @@ end)
 @constraint(im, [i = 1:2, j = eachindex(tw)], x[i](tw[j]) == xw[i, j])
 
 # Create the ExaModel and solve both models to compare
-em, mappings = exa_model(im)
+@time em, mappings = exa_model(im)
 optimize!(im)
 result = ipopt(em, print_level = 0)
 

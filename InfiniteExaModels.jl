@@ -377,17 +377,10 @@ end
 function _add_deriv_equations(core, dref, data, method::InfiniteOpt.FiniteDifference)
     # gather the variables
     vref = InfiniteOpt.derivative_argument(dref) 
-    @assert vref.index_type != InfiniteOpt.MeasureIndex # TODO make this work
     pref = InfiniteOpt.operator_parameter(dref)
     # gather the needed infinite parameter data
     group_idxs = InfiniteOpt._object_numbers(vref)
     pref_group = InfiniteOpt._object_number(pref)
-    if vref.index_type == InfiniteOpt.SemiInfiniteVariable
-        ivref_groups = InfiniteOpt._object_numbers(InfiniteOpt.infinite_variable_ref(vref))
-        pref_loc = findfirst(isequal(pref_group), ivref_groups)
-    else
-        pref_loc = findfirst(isequal(pref_group), group_idxs)
-    end
     # prepare the iterator for the equations
     p_alias = data.param_alias[pref]
     base_itr = data.base_itrs[pref_group]
@@ -400,18 +393,21 @@ function _add_deriv_equations(core, dref, data, method::InfiniteOpt.FiniteDiffer
     itrs = [g == pref_group ? pref_itr : data.base_itrs[g] for g in group_idxs]
     itr = Tuple(merge(i...) for i in Iterators.product(itrs...))
     # make the expression function for the generator
-    # d_ex = _map_variable(dref, data)
-    # v1_ex = _map_variable(vref, data)
-    # v2_ex = copy(v1_ex)
-    # v1_ex.args[pref_loc + 1] = :(p.i1)
-    # v2_ex.args[pref_loc + 1] = :(p.i2)
-    # func_ex = :(p -> $d_ex * p.dt - $v1_ex + $v2_ex)
-    # f = _make_gen_func(func_ex) # TODO this isn't giving a proper julia function...
-    # temp hack for single parameter
-    length(itrs) > 1 && error("Hack assumption violated") # TODO remove once the above problem is fixed
     dvar = data.infvar_mappings[dref]
-    ivar = data.infvar_mappings[vref]
-    f = p -> dvar[p[1]] * p.dt - ivar[p.i1] + ivar[p.i2]
+    if vref.index_type == InfiniteOpt.SemiInfiniteVariableIndex
+        ivar, inds = data.semivar_info[vref]
+        g_alias = data.group_alias[pref_group]
+        inds1 = (i == g_alias ? :i1 : i for i in inds)
+        inds2 = (i == g_alias ? :i2 : i for i in inds)
+        f = p -> dvar[p[1]] * p.dt - ivar[(i isa Int ? i : p[i] for i in inds1)...] + ivar[(i isa Int ? i : p[i] for i in inds2)...]
+    elseif vref.index_type == InfiniteOpt.InfiniteVariableIndex
+        ivar = data.infvar_mappings[vref]
+        inds1 = (g == pref_group ? :i1 : data.group_alias[g] for g in group_idxs)
+        inds2 = (g == pref_group ? :i2 : data.group_alias[g] for g in group_idxs)
+        f = p -> dvar[p[1]] * p.dt - ivar[(p[i] for i in inds1)...] + ivar[(p[i] for i in inds2)...]
+    else # TODO try to make measures work...
+        error("Derivatives that act on references with index `$(vref.index_type)` are not supported.")
+    end
     # add the equations to core
     gen = Base.Generator(f, itr)
     ExaModels.constraint(core, gen) # TODO add mapping?

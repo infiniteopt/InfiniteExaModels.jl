@@ -1,6 +1,10 @@
+module InfiniteExaModels
+
 import InfiniteOpt, JuMP, ExaModels
 import MathOptInterface as _MOI
 import InfiniteOpt.TranscriptionOpt as _TO
+
+export MappingData, build_exa_core!, exa_model
 
 struct MappingData
     # Mappings
@@ -578,3 +582,5 @@ function exa_model(inf_model::InfiniteOpt.InfiniteModel)
     build_exa_core!(core, data, inf_model)
     return ExaModels.ExaModel(core), data 
 end
+
+end # end of module

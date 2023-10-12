@@ -465,10 +465,39 @@ function _add_derivative_approximations(
     return
 end
 
+# Define warning message for when measure heuristics fail
+const _ObjMeasureExpansionWarn = string(
+    "Unable to convert objective measures into a form that is",
+    "efficient for ExaModels using existing heuristics. Performance",
+    "may be significantly degraded. Try simplying the objective structure."
+)
+
 # Write a finite expression `expr` in a single objective term (this is a generic fallback)
 function _add_generic_objective_term(core, expr, data)
     func = _make_expr_gen_func(expr, data)
     ExaModels.objective(core, Base.Generator(func, [(;)]))
+    return
+end
+
+# Add a single measure (no internal measures) as an objective term (helper function)
+function _add_objective_measure_term(core, mexpr, mdata, data)
+    prefs = InfiniteOpt.parameter_refs(mdata) # either a single ref or a vector of refs
+    if prefs isa Vector
+        supps = eachcol(InfiniteOpt.supports(mdata))
+    else
+        supps = InfiniteOpt.supports(mdata)
+    end
+    w = InfiniteOpt.weight_function(mdata)
+    coeffs = InfiniteOpt.coefficients(mdata) .* w.(supps)
+    prefs = InfiniteOpt.parameter_refs(mdata) # either a single ref or a vector of refs
+    group = InfiniteOpt._object_number(first(prefs))
+    @assert length(prefs) == length(first(data.base_itrs[group])) - 1 # we don't allow partially measured dependent parameters
+    alias = data.group_alias[group]
+    aliases = map(p -> data.param_alias[p], prefs)
+    itr = [(; alias => data.support_to_index[group, s], :c => c, zip(aliases, s)...) for (c, s) in zip(coeffs, supps)]
+    expr_code = _make_expr_ast(mexpr, data)
+    func = _make_gen_func(:($coef * p.c * $expr_code))
+    ExaModels.objective(core, Base.Generator(func, itr))
     return
 end
 
@@ -477,30 +506,16 @@ function _add_objective_aff_term(core, coef, vref, data)
     return _add_objective_aff_term(core, coef, vref, vref.index_type, data)
 end
 function _add_objective_aff_term(core, coef, vref, ::Type{InfiniteOpt.MeasureIndex}, data)
-    meas_expr = InfiniteOpt.measure_function(vref)
-    vrefs = InfiniteOpt._all_function_variables(meas_expr)
+    mexpr = InfiniteOpt.measure_function(vref)
+    mdata = InfiniteOpt.measure_data(vref)
+    vrefs = InfiniteOpt._all_function_variables(mexpr)
     if all(v.index_type != InfiniteOpt.MeasureIndex for v in vrefs) # single measure without measures inside of it
-        mdata = InfiniteOpt.measure_data(vref)
-        prefs = InfiniteOpt.parameter_refs(mdata) # either a single ref or a vector of refs
-        if prefs isa Vector
-            supps = eachcol(InfiniteOpt.supports(mdata))
-        else
-            supps = InfiniteOpt.supports(mdata)
-        end
-        w = InfiniteOpt.weight_function(mdata)
-        coeffs = InfiniteOpt.coefficients(mdata) .* w.(supps)
-        prefs = InfiniteOpt.parameter_refs(mdata) # either a single ref or a vector of refs
-        group = InfiniteOpt._object_number(first(prefs))
-        @assert length(prefs) == length(first(data.base_itrs[group])) - 1 # we don't allow partially measured dependent parameters
-        alias = data.group_alias[group]
-        aliases = map(p -> data.param_alias[p], prefs)
-        itr = [(; alias => data.support_to_index[group, s], :c => c, zip(aliases, s)...) for (c, s) in zip(coeffs, supps)]
-        expr_code = _make_expr_ast(meas_expr, data)
-        func = _make_gen_func(:($coef * p.c * $expr_code))
-        ExaModels.objective(core, Base.Generator(func, itr))
+        _add_objective_measure_term(core, coef * mexpr, mdata, data)
     # TODO add more clever conditions to avoid the fallback
-    else # fallback to adding the expansion
-        _add_generic_objective_term(core, coef * InfiniteOpt.expand(vref), data)
+    else # fallback for nested measures
+        inf_model = JuMP.owner_model(vref)
+        @warn _ObjMeasureExpansionWarn
+        _add_objective_measure_term(core, coef * InfiniteOpt.expand_measures(mexpr, inf_model), mdata, data)
     end
     return
 end
@@ -517,6 +532,7 @@ function _add_objective(
     inf_model::InfiniteOpt.InfiniteModel
     )
     new_expr = InfiniteOpt.expand_measures(expr, inf_model)
+    @warn _ObjMeasureExpansionWarn # TODO check for measures to only warn if needed
     _add_generic_objective_term(core, new_expr, data)
     return
 end
@@ -546,7 +562,6 @@ function _add_objective(
     end
     return
 end
-
 
 # Fill an ExaCore and MappingData with an InfiniteModel
 function build_exa_core!(

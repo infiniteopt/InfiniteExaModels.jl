@@ -484,8 +484,8 @@ function _add_generic_objective_term(core, expr, data)
     return
 end
 
-# Add a single measure (no internal measures) as an objective term (helper function)
-function _add_objective_measure_term(core, mexpr, mdata, data)
+# Helper function for generate an iterator based on measure data 
+function _make_measure_itr(mdata, data)
     prefs = InfiniteOpt.parameter_refs(mdata) # either a single ref or a vector of refs
     if prefs isa Vector
         supps = eachcol(InfiniteOpt.supports(mdata))
@@ -499,11 +499,26 @@ function _add_objective_measure_term(core, mexpr, mdata, data)
     @assert length(prefs) == length(first(data.base_itrs[group])) - 1 # we don't allow partially measured dependent parameters
     alias = data.group_alias[group]
     aliases = map(p -> data.param_alias[p], prefs)
-    itr = [(; alias => data.support_to_index[group, s], :c => c, zip(aliases, s)...) for (c, s) in zip(coeffs, supps)]
-    expr_code = _make_expr_ast(mexpr, data)
-    func = _make_gen_func(:(p.c * $expr_code))
-    ExaModels.objective(core, Base.Generator(func, itr))
-    return
+    return [(; :c => c, alias => data.support_to_index[group, s], zip(aliases, s)...) for (c, s) in zip(coeffs, supps)]
+end
+
+# Recursively extract expresion and iterator to be included in the objective
+# TODO finish to function to work properly with recursion for layers of nested measures
+function _process_measure_sum(vref, data)
+    mexpr = InfiniteOpt.measure_function(vref)
+    mdata = InfiniteOpt.measure_data(vref)
+    itr = _make_measure_itr(mdata, data)
+    vrefs = InfiniteOpt._all_function_variables(mexpr)
+    if all(v.index_type != InfiniteOpt.MeasureIndex for v in vrefs) # single measure without measures inside of it
+        return mexpr, itr
+    elseif mexpr == InfiniteOpt.GeneralVariableRef # single nested measure
+        #TODO finish
+        error("Nested measures not finished.")
+    else # fallback for complex nested measures
+        inf_model = JuMP.owner_model(vref)
+        @warn _ObjMeasureExpansionWarn
+        return InfiniteOpt.expand_measures(mexpr, inf_model), itr
+    end
 end
 
 # Helper function for adding affine terms as independent objective terms
@@ -511,17 +526,10 @@ function _add_objective_aff_term(core, coef, vref, data)
     return _add_objective_aff_term(core, coef, vref, vref.index_type, data)
 end
 function _add_objective_aff_term(core, coef, vref, ::Type{InfiniteOpt.MeasureIndex}, data)
-    mexpr = InfiniteOpt.measure_function(vref)
-    mdata = InfiniteOpt.measure_data(vref)
-    vrefs = InfiniteOpt._all_function_variables(mexpr)
-    if all(v.index_type != InfiniteOpt.MeasureIndex for v in vrefs) # single measure without measures inside of it
-        _add_objective_measure_term(core, coef * mexpr, mdata, data)
-    # TODO add more clever conditions to avoid the fallback
-    else # fallback for nested measures
-        inf_model = JuMP.owner_model(vref)
-        @warn _ObjMeasureExpansionWarn
-        _add_objective_measure_term(core, coef * InfiniteOpt.expand_measures(mexpr, inf_model), mdata, data)
-    end
+    mexpr, itr = _process_measure_sum(vref, data)
+    expr_code = _make_expr_ast(coef * mexpr, data)
+    func = _make_gen_func(:(p.c * $expr_code))
+    ExaModels.objective(core, Base.Generator(func, itr))
     return
 end
 function _add_objective_aff_term(core, coef, vref, _, data)

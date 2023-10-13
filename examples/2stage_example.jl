@@ -1,5 +1,5 @@
 using Revise
-Revise.includet("InfiniteExaModels.jl") # allows updates in functions, not data --> eventually since should just be a package
+Revise.includet("../InfiniteExaModels.jl") # allows updates in functions, not data --> eventually since should just be a package
 using .InfiniteExaModels
 
 using InfiniteOpt, Distributions, NLPModelsIpopt, Ipopt, Random

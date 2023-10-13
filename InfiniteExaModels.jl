@@ -369,6 +369,9 @@ function _add_constraints(
             itr = [merge(i...) for i in Iterators.product(itrs...)]
         end
         # TODO account for DomainRestrictions
+        if InfiniteOpt.has_domain_restrictions(cref)
+            error("`DomainRestrictions` are not currently supported by ExaModels.")
+        end
         gen = Base.Generator(func, itr)
         # get the constraint bounds
         lb, ub = _get_constr_bounds(set)
@@ -431,17 +434,18 @@ function _add_deriv_equations(core, dref, data, method::InfiniteOpt.FiniteDiffer
     itr = [merge(i...) for i in Iterators.product(itrs...)]
     # make the expression function for the generator
     dvar = data.infvar_mappings[dref]
+    d_inds = map(g -> data.group_alias[g], group_idxs)
     if vref.index_type == InfiniteOpt.SemiInfiniteVariableIndex
         ivar, inds = data.semivar_info[vref]
         g_alias = data.group_alias[pref_group]
         inds1 = (i == g_alias ? :i1 : i for i in inds)
         inds2 = (i == g_alias ? :i2 : i for i in inds)
-        f = p -> dvar[p[1]] * p.dt - ivar[(i isa Int ? i : p[i] for i in inds1)...] + ivar[(i isa Int ? i : p[i] for i in inds2)...]
+        f = p -> dvar[(p[i] for i in d_inds)...] * p.dt - ivar[(i isa Int ? i : p[i] for i in inds1)...] + ivar[(i isa Int ? i : p[i] for i in inds2)...]
     elseif vref.index_type == InfiniteOpt.InfiniteVariableIndex
         ivar = data.infvar_mappings[vref]
         inds1 = (g == pref_group ? :i1 : data.group_alias[g] for g in group_idxs)
         inds2 = (g == pref_group ? :i2 : data.group_alias[g] for g in group_idxs)
-        f = p -> dvar[p[1]] * p.dt - ivar[(p[i] for i in inds1)...] + ivar[(p[i] for i in inds2)...]
+        f = p -> dvar[(p[i] for i in d_inds)...] * p.dt - ivar[(p[i] for i in inds1)...] + ivar[(p[i] for i in inds2)...]
     else # TODO try to make measures work...
         error("Derivatives that act on references with index `$(vref.index_type)` are not supported.")
     end
@@ -497,7 +501,7 @@ function _add_objective_measure_term(core, mexpr, mdata, data)
     aliases = map(p -> data.param_alias[p], prefs)
     itr = [(; alias => data.support_to_index[group, s], :c => c, zip(aliases, s)...) for (c, s) in zip(coeffs, supps)]
     expr_code = _make_expr_ast(mexpr, data)
-    func = _make_gen_func(:($coef * p.c * $expr_code))
+    func = _make_gen_func(:(p.c * $expr_code))
     ExaModels.objective(core, Base.Generator(func, itr))
     return
 end

@@ -353,6 +353,7 @@ function _add_constraints(
         if isempty(inf_model.constraints[JuMP.index(cref)].measure_indices)
             expr = JuMP.jump_function(constr)
         else
+            @warn "Constrained measures can lead to poor performance with ExaModels."
             expr = InfiniteOpt.expand_measures(JuMP.jump_function(constr), inf_model)
         end
         set = JuMP.moi_set(constr)
@@ -531,8 +532,11 @@ function _add_objective(
     data::MappingData, 
     inf_model::InfiniteOpt.InfiniteModel
     )
+    vrefs = InfiniteOpt._all_function_variables(expr)
+    if any(v.index_type == InfiniteOpt.MeasureIndex for v in vrefs)
+        @warn _ObjMeasureExpansionWarn
+    end
     new_expr = InfiniteOpt.expand_measures(expr, inf_model)
-    @warn _ObjMeasureExpansionWarn # TODO check for measures to only warn if needed
     _add_generic_objective_term(core, new_expr, data)
     return
 end

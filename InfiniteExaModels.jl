@@ -472,8 +472,8 @@ end
 
 # Define warning message for when measure heuristics fail
 const _ObjMeasureExpansionWarn = string(
-    "Unable to convert objective measures into a form that is",
-    "efficient for ExaModels using existing heuristics. Performance",
+    "Unable to convert objective measures into a form that is ",
+    "efficient for ExaModels using existing heuristics. Performance ",
     "may be significantly degraded. Try simplying the objective structure."
 )
 
@@ -503,17 +503,21 @@ function _make_measure_itr(mdata, data)
 end
 
 # Recursively extract expresion and iterator to be included in the objective
-# TODO finish to function to work properly with recursion for layers of nested measures
-function _process_measure_sum(vref, data)
+function _process_measure_sum(vref, data, prev_itr = nothing)
     mexpr = InfiniteOpt.measure_function(vref)
     mdata = InfiniteOpt.measure_data(vref)
-    itr = _make_measure_itr(mdata, data)
+    curr_itr = _make_measure_itr(mdata, data)
+    if isnothing(prev_itr)
+        itr = curr_itr
+    else
+        itr = [(i[1]..., i[2]..., c = i[1].c * i[2].c) for i in Iterators.product(curr_itr, prev_itr)]
+    end
     vrefs = InfiniteOpt._all_function_variables(mexpr)
     if all(v.index_type != InfiniteOpt.MeasureIndex for v in vrefs) # single measure without measures inside of it
         return mexpr, itr
-    elseif mexpr == InfiniteOpt.GeneralVariableRef # single nested measure
-        #TODO finish
-        error("Nested measures not finished.")
+    elseif mexpr isa InfiniteOpt.GeneralVariableRef # single nested measure
+        return _process_measure_sum(mexpr, data, itr)
+    # TODO add more clever heuristics to avoid expanding
     else # fallback for complex nested measures
         inf_model = JuMP.owner_model(vref)
         @warn _ObjMeasureExpansionWarn

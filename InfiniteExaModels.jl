@@ -525,7 +525,8 @@ function _process_measure_sum(vref, data, prev_itr = nothing)
     end
 end
 
-# Helper function for adding affine terms as independent objective terms
+# Helper function for adding "affine" terms as independent objective terms 
+# Note the `coef` doesn't have to be a constant, it can be an expression that doesn't contain measures
 function _add_objective_aff_term(core, coef, vref, data)
     return _add_objective_aff_term(core, coef, vref, vref.index_type, data)
 end
@@ -580,6 +581,29 @@ function _add_objective(
         error("ExaModels does not support objectives with constant terms.")
         # ExaModels.objective(core, c for _ in 1:1) # TODO see if we can make this work
     end
+    return
+end
+function _add_objective(
+    core::ExaModels.ExaCore,
+    quad::InfiniteOpt.GenericQuadExpr,
+    data::MappingData, 
+    inf_model::InfiniteOpt.InfiniteModel
+    )
+    # process the quadratic terms
+    for (coef, vref1, vref2) in JuMP.quad_terms(quad)
+        if vref1.index_type == InfiniteOpt.MeasureIndex && vref2.index_type == InfiniteOpt.MeasureIndex
+            # TODO see if we can avoid the generic fallback in this case
+            @warn _ObjMeasureExpansionWarn
+            new_expr = InfiniteOpt.expand_measures(coef * vref1 * vref2, inf_model)
+            _add_generic_objective_term(core, new_expr, data)
+        elseif vref1.index_type == InfiniteOpt.MeasureIndex
+            _add_objective_aff_term(core, coef * vref2, vref1, data)
+        else
+            _add_objective_aff_term(core, coef * vref1, vref2, data)
+        end
+    end
+    # add the affine terms
+    _add_objective(core, quad.aff, data, inf_model)
     return
 end
 

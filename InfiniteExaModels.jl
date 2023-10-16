@@ -606,6 +606,7 @@ function _add_objective(
     _add_objective(core, quad.aff, data, inf_model)
     return
 end
+# TODO add heuristics for nonlinear expressions
 
 # Fill an ExaCore and MappingData with an InfiniteModel
 function build_exa_core!(

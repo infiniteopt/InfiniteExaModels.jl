@@ -302,7 +302,8 @@ function _map_variable(
     IdxType, 
     data
     )
-    error("Unable to add `$vref` to an ExaModel.")
+    error("Unable to add `$vref` to an ExaModel, it's index type `$IdxType`" *
+          " is not yet supported by InfiniteExaModels.")
 end
 
 # Make an a julia function for generators of the form `p -> expr` where `p` is a namedtuple
@@ -336,7 +337,7 @@ function _get_constr_bounds(set::_MOI.Interval)
     return set.lower, set.upper
 end
 function _get_constr_bounds(set)
-    error("Constraint set `$set` is not compatible with ExaModels.")
+    error("Constraint set `$set` is not compatible with InfiniteExaModels.")
 end
 
 # Add all the constraints from an InfiniteModel to an ExaCore
@@ -370,7 +371,7 @@ function _add_constraints(
         end
         # TODO account for DomainRestrictions
         if InfiniteOpt.has_domain_restrictions(cref)
-            error("`DomainRestrictions` are not currently supported by ExaModels.")
+            error("`DomainRestrictions` are not currently supported by InfiniteExaModels.")
         end
         gen = Base.Generator(func, itr)
         # get the constraint bounds

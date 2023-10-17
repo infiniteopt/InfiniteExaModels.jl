@@ -18,6 +18,9 @@ struct MappingData
     base_itrs::Vector{Any}
     support_to_index::Dict{Tuple{Int, Union{Float64, Vector{Float64}}}, Int}
     semivar_info::Dict{InfiniteOpt.GeneralVariableRef, Tuple{ExaModels.Variable, Vector{Any}}}
+    pfunc_info::Dict{InfiniteOpt.GeneralVariableRef, Tuple{Symbol, <:Array}}
+    measure_pfuncs::Dict{InfiniteOpt.GeneralVariableRef, Vector{InfiniteOpt.GeneralVariableRef}}
+    constraint_pfuncs::Dict{InfiniteOpt.InfOptConstraintRef, Vector{InfiniteOpt.GeneralVariableRef}}
     
     # Default constructor
     function MappingData()
@@ -29,7 +32,10 @@ struct MappingData
             Symbol[],
             [],
             Dict{Tuple{Int, Union{Float64, Vector{Float64}}}, Int}(),
-            Dict{InfiniteOpt.GeneralVariableRef, Tuple{ExaModels.Variable, Vector{Any}}}()
+            Dict{InfiniteOpt.GeneralVariableRef, Tuple{ExaModels.Variable, Vector{Any}}}(),
+            Dict{InfiniteOpt.GeneralVariableRef, Tuple{Symbol, <:Array}}(),
+            Dict{InfiniteOpt.GeneralVariableRef, Vector{InfiniteOpt.GeneralVariableRef}}(),
+            Dict{InfiniteOpt.InfOptConstraintRef, Vector{InfiniteOpt.GeneralVariableRef}}()
         )
     end
 end
@@ -142,7 +148,7 @@ function _add_infinite_variables(
         starts = zeros(dims...)
         if !isnothing(InfiniteOpt.start_value_function(vref))
             for i in Iterators.product(itrs...)
-                supp = [s for nt in i for s in Iterators.drop(values(nt), 2)]
+                supp = [s for nt in i for s in Iterators.drop(values(nt), 1)]
                 if var.is_vector_start
                     start = var.info.start(supp)
                 else
@@ -159,6 +165,52 @@ function _add_infinite_variables(
         data.infvar_mappings[vref] = new_var
     end
     return 
+end
+
+# Helper function for storing parameter function mappings 
+function _map_parameter_function(pfref, obj, data)
+    for idx in obj.measure_indices
+        mref = InfiniteOpt._make_variable_ref(inf_model, idx)
+        if haskey(data.measure_pfuncs, mref)
+            push!(data.measure_pfuncs[mref], pfref)
+        else
+            data.measure_pfuncs[mref] = [pfref]
+        end
+    end
+    for idx in obj.constraint_indices
+        cref = InfiniteOpt.InfOptConstraintRef(inf_model, idx)
+        if haskey(data.constraint_pfuncs, cref)
+            push!(data.constraint_pfuncs[cref], pfref)
+        else
+            data.constraint_pfuncs[cref] = [pfref]
+        end
+    end
+    return
+end
+
+# Process all the parameter function from an InfiniteModel and prepare for use in a ExaCore
+function _add_parameter_functions(
+    data::MappingData,
+    inf_model::InfiniteOpt.InfiniteModel
+    )  
+    for (idx, obj) in inf_model.param_functions
+        # gather the basic information
+        pfref = InfiniteOpt._make_variable_ref(inf_model, idx)
+        group_idxs = obj.func.object_nums
+        prefs = obj.func.parameter_refs
+        # compute the value for each support combination and store
+        itrs = map(i -> data.base_itrs[i], group_idxs)
+        dims = length.(itrs)
+        vals = zeros(dims...)
+        for i in Iterators.product(itrs...)
+            supp = [s for nt in i for s in Iterators.drop(values(nt), 1)]
+            vals[first.(i)...] = obj.func.func(uple(supp, prefs)...)
+        end
+        data.pfunc_info[pfref] = (gensym(), vals)
+        # store which measures and constraints depend on this parameter function
+        _map_parameter_function(pfref, obj, data)
+    end
+    return
 end
 
 # Helper function for processing semi-infinite variables
@@ -184,8 +236,15 @@ function _process_semi_infinite_var(vref, data)
             indexing[i] = data.support_to_index[g, supp] # store the support index
         end
     end
-    # return the desired metadata
-    return data.infvar_mappings[ivref], indexing
+    # store the desired information
+    if ivref.index_type == InfiniteOpt.ParameterFunctionIndex
+        indexing[isa.(indexing, Symbol)] .= Colon()
+        data.pfunc_info[vref] = (gensym(), data.pfunc_info[ivref][indexing...])
+        _map_parameter_function(vref, InfiniteOpt._data_object(vref), data)
+    else
+        data.semivar_info[vref] = (data.infvar_mappings[ivref], indexing)
+    end
+    return
 end
 
 # Add all the semi-infinite variables from an InfiniteModel to a ExaCore
@@ -201,7 +260,7 @@ function _add_semi_infinite_variables(
         # end
         # TODO account for changes in bounds and start
         # collect the basic information fields from InfiniteOpt and save
-        data.semivar_info[vref] = _process_semi_infinite_var(vref, data)
+        _process_semi_infinite_var(vref, data) # TODO consider the possibility of reduced measures
     end
     return 
 end
@@ -240,21 +299,21 @@ function _map_variable(vref, data)
 end
 function _map_variable(
     vref, 
-    ::Type{V}, 
+    ::Type{InfiniteOpt.FiniteVariableIndex}, 
     data
-    ) where V <: Union{InfiniteOpt.FiniteVariableIndex}
+    )
     return data.finvar_mappings[vref]
 end
 function _map_variable(
     vref, 
-    ::Type{V}, 
+    ::Type{InfiniteOpt.PointVariableIndex}, 
     data
-    ) where V <: Union{InfiniteOpt.PointVariableIndex}
+    )
     if haskey(data.finvar_mappings, vref) 
         return data.finvar_mappings[vref]
     else
         var = _process_point_var(vref, data)
-        data.finvar_mappings[vref] = var # TODO consider whether we want to save this or not
+        data.finvar_mappings[vref] = var
         return var
     end
 end
@@ -270,32 +329,42 @@ function _map_variable(
 end
 function _map_variable(
     vref, 
-    ::Type{V}, 
+    ::Type{InfiniteOpt.SemiInfiniteVariableIndex}, 
     data
-    ) where V <: InfiniteOpt.SemiInfiniteVariableIndex
+    )
+    if !haskey(data.semivar_info, vref) && !haskey(data.pfunc_info, vref)
+        _process_semi_infinite_var(vref, data)
+    end
     if haskey(data.semivar_info, vref)
         ivar, inds = data.semivar_info[vref]
-    else
-        ivar, inds = _process_semi_infinite_var(vref, data)
-        data.semivar_info[vref] = (ivar, inds) # TODO consider whether we should save this
+        ex = Expr(:ref, :($ivar))
+        append!(ex.args, i isa Int ? i : :(p.$i) for i in inds)
+        return ex
+    else # we have a reduced parameter function
+        # TODO make sure we can get anything else (e.g., measures) besides parameter functions here
+        return :(p.$(data.pfunc_info[vref][1]))
     end
-    ex = Expr(:ref, :($ivar))
-    append!(ex.args, i isa Int ? i : :(p.$i) for i in inds)
-    return ex
 end
 function _map_variable(
     vref, 
-    ::Type{V}, 
+    ::Type{InfiniteOpt.InfiniteParameterIndex}, 
     data
-    ) where V <: InfiniteOpt.InfiniteParameterIndex
+    )
     return :(p.$(data.param_alias[vref]))
 end
 function _map_variable(
     vref, 
-    ::Type{V}, 
+    ::Type{InfiniteOpt.FiniteParameterIndex}, 
     data
-    ) where V <: InfiniteOpt.FiniteParameterIndex
+    )
     return InfiniteOpt.parameter_value(vref)
+end
+function _map_variable(
+    vref, 
+    ::Type{InfiniteOpt.ParameterFunctionIndex}, 
+    data
+    )
+    return :(p.$(data.pfunc_info[vref][1]))
 end
 function _map_variable(
     vref, 
@@ -369,6 +438,7 @@ function _add_constraints(
             itrs = map(i -> data.base_itrs[i], group_idxs)
             itr = [merge(i...) for i in Iterators.product(itrs...)]
         end
+        # TODO account for (reduced) parameter functions
         # TODO account for DomainRestrictions
         if InfiniteOpt.has_domain_restrictions(cref)
             error("`DomainRestrictions` are not currently supported by InfiniteExaModels.")
@@ -504,6 +574,7 @@ function _make_measure_itr(mdata, data)
 end
 
 # Recursively extract expresion and iterator to be included in the objective
+# TODO account for (reduced) parameter functions
 function _process_measure_sum(vref, data, prev_itr = nothing)
     mexpr = InfiniteOpt.measure_function(vref)
     mdata = InfiniteOpt.measure_data(vref)
@@ -620,6 +691,7 @@ function build_exa_core!(
     # add the variables and appropriate mappings
     _add_finite_variables(core, data, inf_model)
     _add_infinite_variables(core, data, inf_model) # includes derivatives
+    _add_parameter_functions(data, inf_model)
     _add_semi_infinite_variables(data, inf_model)
     _add_point_variables(data, inf_model)
     # add the constraints

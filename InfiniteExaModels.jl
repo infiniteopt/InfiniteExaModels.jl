@@ -19,8 +19,6 @@ struct MappingData
     support_to_index::Dict{Tuple{Int, Union{Float64, Vector{Float64}}}, Int}
     semivar_info::Dict{InfiniteOpt.GeneralVariableRef, Tuple{ExaModels.Variable, Vector{Any}}}
     pfunc_info::Dict{InfiniteOpt.GeneralVariableRef, Tuple{Symbol, <:Array}}
-    measure_pfuncs::Dict{InfiniteOpt.GeneralVariableRef, Vector{InfiniteOpt.GeneralVariableRef}}
-    constraint_pfuncs::Dict{InfiniteOpt.InfOptConstraintRef, Vector{InfiniteOpt.GeneralVariableRef}}
     
     # Default constructor
     function MappingData()
@@ -34,8 +32,6 @@ struct MappingData
             Dict{Tuple{Int, Union{Float64, Vector{Float64}}}, Int}(),
             Dict{InfiniteOpt.GeneralVariableRef, Tuple{ExaModels.Variable, Vector{Any}}}(),
             Dict{InfiniteOpt.GeneralVariableRef, Tuple{Symbol, <:Array}}(),
-            Dict{InfiniteOpt.GeneralVariableRef, Vector{InfiniteOpt.GeneralVariableRef}}(),
-            Dict{InfiniteOpt.InfOptConstraintRef, Vector{InfiniteOpt.GeneralVariableRef}}()
         )
     end
 end
@@ -167,27 +163,6 @@ function _add_infinite_variables(
     return 
 end
 
-# Helper function for storing parameter function mappings 
-function _map_parameter_function(pfref, obj, data)
-    for idx in obj.measure_indices
-        mref = InfiniteOpt._make_variable_ref(inf_model, idx)
-        if haskey(data.measure_pfuncs, mref)
-            push!(data.measure_pfuncs[mref], pfref)
-        else
-            data.measure_pfuncs[mref] = [pfref]
-        end
-    end
-    for idx in obj.constraint_indices
-        cref = InfiniteOpt.InfOptConstraintRef(inf_model, idx)
-        if haskey(data.constraint_pfuncs, cref)
-            push!(data.constraint_pfuncs[cref], pfref)
-        else
-            data.constraint_pfuncs[cref] = [pfref]
-        end
-    end
-    return
-end
-
 # Process all the parameter function from an InfiniteModel and prepare for use in a ExaCore
 function _add_parameter_functions(
     data::MappingData,
@@ -197,18 +172,16 @@ function _add_parameter_functions(
         # gather the basic information
         pfref = InfiniteOpt._make_variable_ref(inf_model, idx)
         group_idxs = obj.func.object_nums
-        prefs = obj.func.parameter_refs
+        prefs = obj.func.parameter_refs # a VectorTuple
         # compute the value for each support combination and store
         itrs = map(i -> data.base_itrs[i], group_idxs)
         dims = length.(itrs)
         vals = zeros(dims...)
         for i in Iterators.product(itrs...)
             supp = [s for nt in i for s in Iterators.drop(values(nt), 1)]
-            vals[first.(i)...] = obj.func.func(uple(supp, prefs)...)
+            vals[first.(i)...] = obj.func.func(Tuple(supp, prefs)...)
         end
         data.pfunc_info[pfref] = (gensym(), vals)
-        # store which measures and constraints depend on this parameter function
-        _map_parameter_function(pfref, obj, data)
     end
     return
 end
@@ -239,8 +212,7 @@ function _process_semi_infinite_var(vref, data)
     # store the desired information
     if ivref.index_type == InfiniteOpt.ParameterFunctionIndex
         indexing[isa.(indexing, Symbol)] .= Colon()
-        data.pfunc_info[vref] = (gensym(), data.pfunc_info[ivref][indexing...])
-        _map_parameter_function(vref, InfiniteOpt._data_object(vref), data)
+        data.pfunc_info[vref] = (gensym(), data.pfunc_info[ivref][2][indexing...])
     else
         data.semivar_info[vref] = (data.infvar_mappings[ivref], indexing)
     end
@@ -260,7 +232,7 @@ function _add_semi_infinite_variables(
         # end
         # TODO account for changes in bounds and start
         # collect the basic information fields from InfiniteOpt and save
-        _process_semi_infinite_var(vref, data) # TODO consider the possibility of reduced measures
+        _process_semi_infinite_var(vref, data)
     end
     return 
 end
@@ -341,13 +313,12 @@ function _map_variable(
         append!(ex.args, i isa Int ? i : :(p.$i) for i in inds)
         return ex
     else # we have a reduced parameter function
-        # TODO make sure we can get anything else (e.g., measures) besides parameter functions here
         return :(p.$(data.pfunc_info[vref][1]))
     end
 end
 function _map_variable(
     vref, 
-    ::Type{InfiniteOpt.InfiniteParameterIndex}, 
+    ::Type{<:InfiniteOpt.InfiniteParameterIndex}, 
     data
     )
     return :(p.$(data.param_alias[vref]))
@@ -409,6 +380,29 @@ function _get_constr_bounds(set)
     error("Constraint set `$set` is not compatible with InfiniteExaModels.")
 end
 
+# Helper function to augment an expression function and iterator to incorporate parameter functions
+# NOTE: _make_expr_ast must be called on `expr` before this is called
+function _add_parameter_functions_to_itr(expr, itr, data)
+    vrefs = InfiniteOpt._all_function_variables(expr)
+    filter!(vrefs) do v
+        if v.index_type == InfiniteOpt.ParameterFunctionIndex
+            return true
+        elseif v.index_type == InfiniteOpt.SemiInfiniteVariableIndex
+            return InfiniteOpt.infinite_variable_ref(v).index_type == InfiniteOpt.ParameterFunctionIndex
+        else
+            return false
+        end
+    end
+    # TODO figure out how to only update the iterator once
+    for pfref in vrefs
+        group_idxs = InfiniteOpt._object_numbers(pfref)
+        aliases = [data.group_alias[g] for g in group_idxs]
+        alias, vals = data.pfunc_info[pfref]
+        itr = [(; p..., alias => vals[values(p[aliases])...]) for p in itr]
+    end
+    return itr
+end
+
 # Add all the constraints from an InfiniteModel to an ExaCore
 function _add_constraints(
     core::ExaModels.ExaCore, 
@@ -428,7 +422,7 @@ function _add_constraints(
         end
         set = JuMP.moi_set(constr)
         group_idxs = InfiniteOpt._object_numbers(cref)
-        # make the expression generator
+        # prepare the expression function and the iterator
         func = _make_expr_gen_func(expr, data)
         if isempty(group_idxs) # we have a finite constraint
             itr = [(;)]
@@ -438,11 +432,15 @@ function _add_constraints(
             itrs = map(i -> data.base_itrs[i], group_idxs)
             itr = [merge(i...) for i in Iterators.product(itrs...)]
         end
-        # TODO account for (reduced) parameter functions
         # TODO account for DomainRestrictions
         if InfiniteOpt.has_domain_restrictions(cref)
             error("`DomainRestrictions` are not currently supported by InfiniteExaModels.")
         end
+        # Update the iterator to include parameter function values
+        if !isempty(data.pfunc_info)
+            itr = _add_parameter_functions_to_itr(expr, itr, data)
+        end
+        # make the expression generator
         gen = Base.Generator(func, itr)
         # get the constraint bounds
         lb, ub = _get_constr_bounds(set)
@@ -509,14 +507,14 @@ function _add_deriv_equations(core, dref, data, method::InfiniteOpt.FiniteDiffer
     if vref.index_type == InfiniteOpt.SemiInfiniteVariableIndex
         ivar, inds = data.semivar_info[vref]
         g_alias = data.group_alias[pref_group]
-        inds1 = (i == g_alias ? :i1 : i for i in inds)
-        inds2 = (i == g_alias ? :i2 : i for i in inds)
-        f = p -> dvar[(p[i] for i in d_inds)...] * p.dt - ivar[(i isa Int ? i : p[i] for i in inds1)...] + ivar[(i isa Int ? i : p[i] for i in inds2)...]
+        inds1 = Tuple(i == g_alias ? :i1 : i for i in inds)
+        inds2 = Tuple(i == g_alias ? :i2 : i for i in inds)
+        f = p -> dvar[values(p[d_inds])...] * p.dt - ivar[(i isa Int ? i : p[i] for i in inds1)...] + ivar[(i isa Int ? i : p[i] for i in inds2)...]
     elseif vref.index_type == InfiniteOpt.InfiniteVariableIndex
         ivar = data.infvar_mappings[vref]
-        inds1 = (g == pref_group ? :i1 : data.group_alias[g] for g in group_idxs)
-        inds2 = (g == pref_group ? :i2 : data.group_alias[g] for g in group_idxs)
-        f = p -> dvar[(p[i] for i in d_inds)...] * p.dt - ivar[(p[i] for i in inds1)...] + ivar[(p[i] for i in inds2)...]
+        inds1 = Tuple(g == pref_group ? :i1 : data.group_alias[g] for g in group_idxs)
+        inds2 = Tuple(g == pref_group ? :i2 : data.group_alias[g] for g in group_idxs)
+        f = p -> dvar[values(p[d_inds])...] * p.dt - ivar[values(p[inds1])...] + ivar[values(p[inds2])...]
     else # TODO try to make measures work...
         error("Derivatives that act on references with index `$(vref.index_type)` are not supported.")
     end
@@ -574,7 +572,6 @@ function _make_measure_itr(mdata, data)
 end
 
 # Recursively extract expresion and iterator to be included in the objective
-# TODO account for (reduced) parameter functions
 function _process_measure_sum(vref, data, prev_itr = nothing)
     mexpr = InfiniteOpt.measure_function(vref)
     mdata = InfiniteOpt.measure_data(vref)
@@ -603,9 +600,15 @@ function _add_objective_aff_term(core, coef, vref, data)
     return _add_objective_aff_term(core, coef, vref, vref.index_type, data)
 end
 function _add_objective_aff_term(core, coef, vref, ::Type{InfiniteOpt.MeasureIndex}, data)
+    # process the measure structure recursively as needed
     mexpr, itr = _process_measure_sum(vref, data)
     expr_code = _make_expr_ast(coef * mexpr, data)
     func = _make_gen_func(:(p.c * $expr_code))
+    # update the iterator to include parameter function values
+    if !isempty(data.pfunc_info)
+        itr = _add_parameter_functions_to_itr(mexpr, itr, data)
+    end
+    # add the term to the objective
     ExaModels.objective(core, Base.Generator(func, itr))
     return
 end

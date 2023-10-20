@@ -77,8 +77,15 @@ function main()
 
     # Create the ExaModel and solve both models to compare
     @time em, mappings = exa_model(im)
+    set_optimizer_attribute(im, "linear_solver", "ma27")
+    set_optimizer_attribute(im, "print_timing_statistics", "yes")
     optimize!(im)
-    result = ipopt(em, print_level = 0)
+    result = ipopt(em; linear_solver="ma27")
+    ipopt(
+        em;
+        linear_solver="ma27",
+        print_timing_statistics = "yes",
+    )
 
     # Print a report
     println("\n--------------------------------------------")

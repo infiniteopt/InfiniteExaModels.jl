@@ -10,12 +10,14 @@ Random.seed!(42)
 β = 0.727
 N = 1e5
 extra_ts = [0.001, 0.002, 0.004, 0.008, 0.02, 0.04, 0.08, 0.2, 0.4, 0.8]
+# dmethod = OrthogonalCollocation(3)
+dmethod = FiniteDifference(Backward())
 
 # Create the infinite model
 im = InfiniteModel(Ipopt.Optimizer)
 set_silent(im)
-@infinite_parameter(im, t ∈ [0, 200], num_supports = 101)
-@infinite_parameter(im, ξ ~ Uniform(0.1, 0.6), num_supports = 15)
+@infinite_parameter(im, t ∈ [0, 200], num_supports = 101, derivative_method = dmethod)
+@infinite_parameter(im, ξ ~ Uniform(0.1, 0.6), num_supports = 2)
 add_supports(t, extra_ts)
 @variable(im, s ≥ 0, Infinite(t, ξ))
 @variable(im, e ≥ 0, Infinite(t, ξ))

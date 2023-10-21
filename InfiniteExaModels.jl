@@ -516,11 +516,85 @@ function _add_deriv_equations(core, dref, data, method::InfiniteOpt.FiniteDiffer
         inds2 = Tuple(g == pref_group ? :i2 : data.group_alias[g] for g in group_idxs)
         f = p -> dvar[values(p[d_inds])...] * p.dt - ivar[values(p[inds1])...] + ivar[values(p[inds2])...]
     else # TODO try to make measures work...
-        error("Derivatives that act on references with index `$(vref.index_type)` are not supported.")
+        error("Derivatives that act on references with index type `$(vref.index_type)` are not supported by InfiniteExaModels.")
     end
     # add the equations to core
     gen = Base.Generator(f, itr)
     ExaModels.constraint(core, gen) # TODO add mapping?
+    return 
+end
+function _add_deriv_equations(
+    core, 
+    dref, 
+    data, 
+    method::InfiniteOpt.OrthogonalCollocation{InfiniteOpt.MeasureToolbox.GaussLobatto}
+    )
+    # gather the variables
+    vref = InfiniteOpt.derivative_argument(dref) 
+    pref = InfiniteOpt.operator_parameter(dref)
+    # gather the needed infinite parameter data
+    group_idxs = InfiniteOpt._object_numbers(vref)
+    pref_group = InfiniteOpt._object_number(pref)
+    pref_alias = data.group_alias[pref_group]
+    aliases = Tuple(data.group_alias[g] for g in group_idxs)
+    other_idxs = filter(i -> i != pref_group, group_idxs)
+    # prepare the iterator for base equations
+    n_nodes = method.num_nodes - 1 # we want the # of nodes in each element (excluding the lb)
+    n_supps = length(data.base_itrs[pref_group])
+    pref_itr = [(i1 = n, i2 = lb) for (n, lb) in zip(2:n_supps, repeat(1:n_nodes:n_supps-1, inner = n_nodes))]
+    other_itrs = Tuple(data.base_itrs[g] for g in other_idxs)
+    base_itr = vec([merge(i...) for i in Iterators.product(other_itrs..., pref_itr)])
+    # create the base constraints (the summation portion excluded)
+    if vref.index_type == InfiniteOpt.SemiInfiniteVariableIndex
+        ivar, inds = data.semivar_info[vref]
+        inds1 = Tuple(i == pref_alias ? :i1 : i for i in inds)
+        inds2 = Tuple(i == pref_alias ? :i2 : i for i in inds)
+        f = p -> -ivar[(i isa Int ? i : p[i] for i in inds1)...] + ivar[(i isa Int ? i : p[i] for i in inds2)...]
+    elseif vref.index_type == InfiniteOpt.InfiniteVariableIndex
+        ivar = data.infvar_mappings[vref]
+        inds1 = Tuple(a == pref_alias ? :i1 : a for a in aliases)
+        inds2 = Tuple(a == pref_alias ? :i2 : a for a in aliases)
+        f = p -> -ivar[values(p[inds1])...] + ivar[values(p[inds2])...]
+    else # TODO try to make measures work...
+        error("Derivatives that act on references with index type `$(vref.index_type)` are not supported by InfiniteExaModels.")
+    end
+    base_con = ExaModels.constraint(core, Base.Generator(f, base_itr))
+    # augment the base constraints with the summation terms
+    all_supps = InfiniteOpt.supports(pref, label = InfiniteOpt.All)
+    num_repeats = reduce(*, length.(other_itrs), init = 1)
+    linear_idxs = LinearIndices(Tuple(1:length(data.base_itrs[g]) for g in group_idxs))
+    itr_len = (n_supps-1) * n_nodes * num_repeats
+    aug_itr = Vector{NamedTuple{(:i, :c, :idx), Tuple{Int, Float64, Int}}}(undef, itr_len)
+    counter = 1
+    for i in 1:n_nodes:n_supps-1
+        # collect the supports
+        lb = all_supps[i]
+        i_nodes = all_supps[i+1:i+n_nodes] .- lb
+        # build the matrices in memory order (column-wise using the transpose form)
+        M1t = Matrix{Float64}(undef, n_nodes, n_nodes)
+        M2t = Matrix{Float64}(undef, n_nodes, n_nodes)
+        for j in eachindex(i_nodes) # support index
+            for k in eachindex(i_nodes) # polynomial index
+                M1t[k, j] = k * i_nodes[j]^(k-1)
+                M2t[k, j] = i_nodes[j]^k
+            end
+        end
+        Minvt = M1t \ M2t
+        for j in eachindex(i_nodes)
+            for k in eachindex(i_nodes)
+                for n in 1:num_repeats # repeat for the other parameter combinations
+                    base_itr_idx = (i + j - 2) * num_repeats + n # exploiting the fact that the pref_itr is last in the product
+                    pref_idx = i + k # needs to index the support at i_nodes[k] + lb
+                    dvar_idx = (a == pref_alias ? pref_idx : base_itr[base_itr_idx][a] for a in aliases)
+                    aug_itr[counter] = (; i = base_itr_idx, c = Minvt[k, j], idx = linear_idxs[dvar_idx...])
+                    counter += 1
+                end
+            end
+        end
+    end
+    dvar = data.infvar_mappings[dref]
+    g = p -> p.i => p.c * dvar[p.idx]
+    ExaModels.constraint!(core, base_con, Base.Generator(g, aug_itr))
     return 
 end
 function _add_deriv_equations(core, dref, data, method)

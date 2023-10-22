@@ -39,13 +39,6 @@ function main(filename = "pglib_opf_case14_ieee.m"; seed = 0, num_supports = 10)
         end
         for (i, branch) in ref[:branch]]
 
-    # println(branch)
-    # println(ref[:arcs])
-    # n_z = 3; n_θ = 3; n_d = 3
-    # c = ones(n_d) / sqrt(n_d)
-    # c_max = 5
-    # U = 10000
-
     # Define the infinite model
     im = InfiniteModel(Ipopt.Optimizer)
     # set_silent(im)

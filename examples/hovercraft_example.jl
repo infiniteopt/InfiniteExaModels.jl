@@ -7,11 +7,13 @@ using InfiniteOpt, NLPModelsIpopt, Ipopt
 # Data
 xw = [1 4 6 1; 1 3 0 1] # positions
 tw = [0, 25, 50, 60];    # times
+# dmethod = OrthogonalCollocation(3)
+dmethod = FiniteDifference(Backward())
 
 # Define the InfiniteModel
 im = InfiniteModel(Ipopt.Optimizer)
 set_silent(im)
-@infinite_parameter(im, t in [0, 60], num_supports = 101)
+@infinite_parameter(im, t in [0, 60], num_supports = 101, derivative_method = dmethod)
 @variables(im, begin
     # state variables
     x[1:2], Infinite(t)

@@ -91,32 +91,32 @@ function main(filename = "pglib_opf_case14_ieee.m"; seed = 0, num_supports = 10)
             (-br.g * br.tr + br.b * br.ti) / br.ttm * (vm[br.f_bus] * vm[br.t_bus] * cos(va[br.f_bus] - va[br.t_bus])) +
             (-br.b * br.tr - br.g * br.ti) / br.ttm * (vm[br.f_bus] * vm[br.t_bus] * sin(va[br.f_bus] - va[br.t_bus]))
     )
-    # @constraint(
-    #     im,
-    #     [br in branch],
-    #     q[br.f_idx] ==
-    #         -(br.b + br.b_fr) / br.ttm * vm[br.f_bus]^2 -
-    #         (-br.b * br.tr - br.g * br.ti) / br.ttm * (vm[br.f_bus] * vm[br.t_bus] * cos(va[br.f_bus] - va[br.t_bus])) +
-    #         (-br.g * br.tr + br.b * br.ti) / br.ttm * (vm[br.f_bus] * vm[br.t_bus] * sin(va[br.f_bus] - va[br.t_bus]))
-    # )
+    @constraint(
+        im,
+        [br in branch],
+        q[br.f_idx] ==
+            -(br.b + br.b_fr) / br.ttm * vm[br.f_bus]^2 -
+            (-br.b * br.tr - br.g * br.ti) / br.ttm * (vm[br.f_bus] * vm[br.t_bus] * cos(va[br.f_bus] - va[br.t_bus])) +
+            (-br.g * br.tr + br.b * br.ti) / br.ttm * (vm[br.f_bus] * vm[br.t_bus] * sin(va[br.f_bus] - va[br.t_bus]))
+    )
 
-    # # To side of the branch flow
-    # @constraint(
-    #     im,
-    #     [br in branch],
-    #     p[br.t_idx] ==
-    #         (br.g + br.g_to) * vm[br.t_bus]^2 +
-    #         (-br.g * br.tr - br.b * br.ti) / br.ttm * (vm[br.t_bus] * vm[br.f_bus] * cos(va[br.t_bus] - va[br.f_bus])) +
-    #         (-br.b * br.tr + br.g * br.ti) / br.ttm * (vm[br.t_bus] * vm[br.f_bus] * sin(va[br.t_bus] - va[br.f_bus]))
-    # )
-    # @constraint(
-    #     im,
-    #     [br in branch],
-    #     q[br.t_idx] ==
-    #         -(br.b + br.b_to) * vm[br.t_bus]^2 -
-    #         (-br.b * br.tr + br.g * br.ti) / br.ttm * (vm[br.t_bus] * vm[br.f_bus] * cos(va[br.t_bus] - va[br.f_bus])) +
-    #         (-br.g * br.tr - br.b * br.ti) / br.ttm * (vm[br.t_bus] * vm[br.f_bus] * sin(va[br.t_bus] - va[br.f_bus]))
-    # )
+    # To side of the branch flow
+    @constraint(
+        im,
+        [br in branch],
+        p[br.t_idx] ==
+            (br.g + br.g_to) * vm[br.t_bus]^2 +
+            (-br.g * br.tr - br.b * br.ti) / br.ttm * (vm[br.t_bus] * vm[br.f_bus] * cos(va[br.t_bus] - va[br.f_bus])) +
+            (-br.b * br.tr + br.g * br.ti) / br.ttm * (vm[br.t_bus] * vm[br.f_bus] * sin(va[br.t_bus] - va[br.f_bus]))
+    )
+    @constraint(
+        im,
+        [br in branch],
+        q[br.t_idx] ==
+            -(br.b + br.b_to) * vm[br.t_bus]^2 -
+            (-br.b * br.tr + br.g * br.ti) / br.ttm * (vm[br.t_bus] * vm[br.f_bus] * cos(va[br.t_bus] - va[br.f_bus])) +
+            (-br.g * br.tr - br.b * br.ti) / br.ttm * (vm[br.t_bus] * vm[br.f_bus] * sin(va[br.t_bus] - va[br.f_bus]))
+    )
 
     # Voltage angle difference limit
     @constraint(im, [br in branch], br.angmin <= va[br.f_bus] - va[br.t_bus] <= br.angmax)

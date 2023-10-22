@@ -12,4 +12,4 @@ MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
 [compat]
 ExaModels = "0.4"
 JuMP = "1.15"
-ExaModels = "0.4"
+MathOptInterface = "1.20"

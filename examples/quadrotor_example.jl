@@ -83,8 +83,8 @@ function main()
     set_optimizer_attribute(im, "linear_solver", "ma27")
     set_optimizer_attribute(im, "print_timing_statistics", "yes")
     optimize!(im)
-    result = ipopt(em; linear_solver="ma27")
-    ipopt(
+    ipopt(em; print_level = 0, linear_solver="ma27")
+    result = ipopt(
         em;
         linear_solver="ma27",
         print_timing_statistics = "yes",

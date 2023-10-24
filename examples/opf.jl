@@ -1,16 +1,19 @@
 using InfiniteExaModels
 using InfiniteOpt, Distributions, NLPModelsIpopt, Ipopt, Random
 using ExaModelsExamples
+using LinearAlgebra
 
-function main(filename = "pglib_opf_case14_ieee.m"; seed = 0, num_supports = 10)
+function main(filename = "pglib_opf_case3_lmbd.m"; seed = 0, num_supports = 10)
+    
+    ref = ExaModelsExamples.get_power_data_ref(filename)
     
     Random.seed!(seed)
 
     # Set the parameters
-    n_θ = 3
-    θ_nom = [0.; 60.; 10.]
-    covar = [80. 0 0; 0 80. 0; 0 0 120.]
-    ref = ExaModelsExamples.get_power_data_ref(filename)
+    nbus = length(ref[:bus])
+    n_θ = nbus * 2
+    θ_nom = zeros(n_θ)
+    covar = 0.1^2 * ones(n_θ)
 
     branch = [
         begin
@@ -72,16 +75,106 @@ function main(filename = "pglib_opf_case14_ieee.m"; seed = 0, num_supports = 10)
             ref[:branch][l]["rate_a"], Infinite(θ)
     )
 
+    @variable(im, va0[i in keys(ref[:bus])])
+    @variable(
+        im,
+        ref[:bus][i]["vmin"] <= vm0[i in keys(ref[:bus])] <= ref[:bus][i]["vmax"],
+        start = 1.0
+    )
+    @variable(
+        im,
+        ref[:gen][i]["pmin"] <= pg0[i in keys(ref[:gen])] <= ref[:gen][i]["pmax"],
+    )
+    @variable(
+        im,
+        ref[:gen][i]["qmin"] <= qg0[i in keys(ref[:gen])] <= ref[:gen][i]["qmax"],
+    )
+
+    @variable(
+        im,
+        -ref[:branch][l]["rate_a"] <=
+            p0[(l, i, j) in ref[:arcs]] <=
+            ref[:branch][l]["rate_a"]
+    )
+    @variable(
+        im,
+        -ref[:branch][l]["rate_a"] <=
+            q0[(l, i, j) in ref[:arcs]] <=
+            ref[:branch][l]["rate_a"]
+    )
+    
     @objective(
         im,
         Min,
-        expect(
-            sum(gen["cost"][1] * pg[i]^2 + gen["cost"][2] * pg[i] + gen["cost"][3] for (i, gen) in ref[:gen]),
-            θ
-        )
+        sum(gen["cost"][1] * pg0[i]^2 + gen["cost"][2] * pg0[i] + gen["cost"][3] for (i, gen) in ref[:gen])
     )
-    
-    
+
+    # first stage
+    @constraint(im, [(i, bus) in ref[:ref_buses]], va0[i] == 0)
+    @constraint(
+        im,
+        [br in branch],
+        p0[br.f_idx] ==
+            (br.g + br.g_fr) / br.ttm * vm0[br.f_bus]^2 +
+            (-br.g * br.tr + br.b * br.ti) / br.ttm * (vm0[br.f_bus] * vm0[br.t_bus] * cos(va0[br.f_bus] - va0[br.t_bus])) +
+            (-br.b * br.tr - br.g * br.ti) / br.ttm * (vm0[br.f_bus] * vm0[br.t_bus] * sin(va0[br.f_bus] - va0[br.t_bus]))
+    )
+    @constraint(
+        im,
+        [br in branch],
+        q0[br.f_idx] ==
+            -(br.b + br.b_fr) / br.ttm * vm0[br.f_bus]^2 -
+            (-br.b * br.tr - br.g * br.ti) / br.ttm * (vm0[br.f_bus] * vm0[br.t_bus] * cos(va0[br.f_bus] - va0[br.t_bus])) +
+            (-br.g * br.tr + br.b * br.ti) / br.ttm * (vm0[br.f_bus] * vm0[br.t_bus] * sin(va0[br.f_bus] - va0[br.t_bus]))
+    )
+
+    # To side of the branch flow
+    @constraint(
+        im,
+        [br in branch],
+        p0[br.t_idx] ==
+            (br.g + br.g_to) * vm0[br.t_bus]^2 +
+            (-br.g * br.tr - br.b * br.ti) / br.ttm * (vm0[br.t_bus] * vm0[br.f_bus] * cos(va0[br.t_bus] - va0[br.f_bus])) +
+            (-br.b * br.tr + br.g * br.ti) / br.ttm * (vm0[br.t_bus] * vm0[br.f_bus] * sin(va0[br.t_bus] - va0[br.f_bus]))
+    )
+    @constraint(
+        im,
+        [br in branch],
+        q0[br.t_idx] ==
+            -(br.b + br.b_to) * vm0[br.t_bus]^2 -
+            (-br.b * br.tr + br.g * br.ti) / br.ttm * (vm0[br.t_bus] * vm0[br.f_bus] * cos(va0[br.t_bus] - va0[br.f_bus])) +
+            (-br.g * br.tr - br.b * br.ti) / br.ttm * (vm0[br.t_bus] * vm0[br.f_bus] * sin(va0[br.t_bus] - va0[br.f_bus]))
+    )
+
+    # Voltage angle difference limit
+    @constraint(im, [br in branch], br.angmin <= va0[br.f_bus] - va0[br.t_bus] <= br.angmax)
+
+    # Apparent power limit, from side and to side
+    @constraint(im, [br in branch], p0[br.f_idx]^2 + q0[br.f_idx]^2 <= br.rate_a)
+    @constraint(im, [br in branch], p0[br.t_idx]^2 + q0[br.t_idx]^2 <= br.rate_a)
+
+    # Bottle-neck
+    for (i, bus) in ref[:bus]
+        bus_loads = [ref[:load][l] for l in ref[:bus_loads][i]]
+        bus_shunts = [ref[:shunt][s] for s in ref[:bus_shunts][i]]
+
+        JuMP.@constraint(
+            im,
+            sum(p0[a] for a in ref[:bus_arcs][i]) ==
+            sum(pg0[g] for g in ref[:bus_gens][i]) - sum(load["pd"] for load in bus_loads) -
+            sum(shunt["gs"] for shunt in bus_shunts) * vm0[i]^2
+        )
+
+        JuMP.@constraint(
+            im,
+            sum(q0[a] for a in ref[:bus_arcs][i]) ==
+            sum(qg0[g] for g in ref[:bus_gens][i]) - sum(load["qd"] for load in bus_loads) +
+            sum(shunt["bs"] for shunt in bus_shunts) * vm0[i]^2
+        )
+    end
+
+    ####################################################
+    # second stage
     @constraint(im, [(i, bus) in ref[:ref_buses]], va[i] == 0)
     @constraint(
         im,
@@ -133,36 +226,47 @@ function main(filename = "pglib_opf_case14_ieee.m"; seed = 0, num_supports = 10)
         JuMP.@constraint(
             im,
             sum(p[a] for a in ref[:bus_arcs][i]) ==
-            sum(pg[g] for g in ref[:bus_gens][i]) - sum(load["pd"] for load in bus_loads) -
-            sum(shunt["gs"] for shunt in bus_shunts) * vm[i]^2
+                θ[i] +
+                sum(pg[g] for g in ref[:bus_gens][i]) -
+                sum(load["pd"] for load in bus_loads) -
+                sum(shunt["gs"] for shunt in bus_shunts) * vm[i]^2
         )
 
         JuMP.@constraint(
             im,
             sum(q[a] for a in ref[:bus_arcs][i]) ==
-            sum(qg[g] for g in ref[:bus_gens][i]) - sum(load["qd"] for load in bus_loads) +
-            sum(shunt["bs"] for shunt in bus_shunts) * vm[i]^2
+                θ[nbus + i] +
+                sum(qg[g] for g in ref[:bus_gens][i]) -
+                sum(load["qd"] for load in bus_loads) +
+                sum(shunt["bs"] for shunt in bus_shunts) * vm[i]^2
         )
     end
 
+
+    # ramping constraints
+    # TODO: these bounds are arbitrary. Need to check what's the practical value.
+    @constraint(im, [i in keys(ref[:gen])],  - 1 <= pg0[i] - pg[i] <= 1)
+    @constraint(im, [i in keys(ref[:gen])],  - 1 <= qg0[i] - qg[i] <= 1)
+
+    
     # Create the ExaModel and solve both models to compare
     optimize!(im)
     
     @time em, mappings = exa_model(im)
-    # result = ipopt(em)
+    result = ipopt(em)
 
-    # # Get the answers
-    # ed = [result.solution[mappings.finvar_mappings[v].i] for v in d]
-    # id = value.(d)
+    # Get the answers
+    epg0 = [result.solution[mappings.finvar_mappings[v].i] for v in pg0.data]
+    ipg0 = Array(value.(pg0))
 
-    # # Print a report
-    # println("\n--------------------------------------------")
-    # println("               SUMMARY")
-    # println("--------------------------------------------\n")
-    # println("ExaModel Objective:      ", -result.objective) # change sign for maximization
-    # println("InfiniteModel Objective: ", objective_value(im))
-    # println("\nExaModel d:      ", ed)
-    # println("InfiniteModel d: ", id)
+    # Print a report
+    println("\n--------------------------------------------")
+    println("               SUMMARY")
+    println("--------------------------------------------\n")
+    println("ExaModel Objective:      ", result.objective) 
+    println("InfiniteModel Objective: ", objective_value(im))
+    println("\nExaModel pg0:      ", epg0)
+    println("InfiniteModel pg0: ", ipg0)
 end
 
 main()

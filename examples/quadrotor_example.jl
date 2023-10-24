@@ -10,12 +10,14 @@ function main()
 
     T = 60
     N = 101
-    
 
+    dmethod = OrthogonalCollocation(3)
+    # dmethod = FiniteDifference(Backward())
+    
     # Define the InfiniteModel
     im = InfiniteModel(Ipopt.Optimizer)
 
-    @infinite_parameter(im, t in [0, T], num_supports = N)
+    @infinite_parameter(im, t in [0, T], num_supports = N, derivative_method = dmethod)
     
     @parameter_function(im, d1 == t -> sin(2 * pi * t/T))
     @parameter_function(im, d3 == t -> 2 * sin(4 * pi * t/T))
@@ -30,6 +32,7 @@ function main()
             u[1:p], Infinite(t), (start = 0)
         end
     )
+    constant_over_collocation.(u, t)
     @objective(
         im, Min, ∫(
             (x[1] - d1)^2 + (x[3] - d3)^2 + (x[5] - d5)^2 + x[7]^2 + x[8]^2 + x[9]^2

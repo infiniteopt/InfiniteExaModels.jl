@@ -613,6 +613,44 @@ function _add_derivative_approximations(
     return
 end
 
+# Add the constraints needed for piecewise constant control variables
+function _add_collocation_restrictions(
+    core::ExaModels.ExaCore, 
+    data::MappingData,
+    inf_model::InfiniteOpt.InfiniteModel
+    )
+    for (pidx, vidxs) in inf_model.piecewise_vars
+        # gather the basic information
+        pref = InfiniteOpt._make_variable_ref(inf_model, pidx)
+        if !InfiniteOpt.has_generative_supports(pref)
+            continue
+        end
+        pref_group = InfiniteOpt._object_number(pref)
+        pref_alias = data.group_alias[pref_group]
+        # make the base pref iterator
+        info = InfiniteOpt.generative_support_info(pref)
+        num_nodes = length(info.support_basis)
+        num_supps = InfiniteOpt.num_supports(pref, label = InfiniteOpt.All)
+        ubs = repeat(2+num_nodes:num_nodes+1:num_supps, inner = num_nodes)
+        pts = filter(i -> !(i in ubs), 2:num_supps-1)
+        pref_itr = [(i1 = ub, i2 = pt) for (ub, pt) in zip(ubs, pts)]
+        # make the constraints for each infinite variable
+        for vidx in vidxs
+            vref = InfiniteOpt._make_variable_ref(inf_model, vidx)
+            group_idxs = InfiniteOpt._object_numbers(vref)
+            aliases = (data.group_alias[g] for g in group_idxs)
+            itrs = (g == pref_group ? pref_itr : data.base_itrs[g] for g in group_idxs)
+            itr = vec([merge(i...) for i in Iterators.product(itrs...)])
+            ivar = data.infvar_mappings[vref]
+            inds1 = Tuple(a == pref_alias ? :i1 : a for a in aliases)
+            inds2 = Tuple(a == pref_alias ? :i2 : a for a in aliases)
+            f = p -> ivar[values(p[inds1])...] - ivar[values(p[inds2])...]
+            ExaModels.constraint(core, Base.Generator(f, itr))
+        end
+    end
+    return
+end
+
 # Define warning message for when measure heuristics fail
 const _ObjMeasureExpansionWarn = string(
     "Unable to convert objective measures into a form that is ",
@@ -774,6 +812,7 @@ function build_exa_core!(
     # add the constraints
     _add_constraints(core, data, inf_model)
     _add_derivative_approximations(core, data, inf_model)
+    _add_collocation_restrictions(core, data, inf_model)
     # add the objective if we have one
     expr = JuMP.objective_function(inf_model)
     sense = JuMP.objective_sense(inf_model)

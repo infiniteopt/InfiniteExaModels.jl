@@ -5,8 +5,8 @@ using InfiniteOpt, NLPModelsIpopt, Ipopt
 # Data
 xw = [1 4 6 1; 1 3 0 1] # positions
 tw = [0, 25, 50, 60];    # times
-# dmethod = OrthogonalCollocation(3)
-dmethod = FiniteDifference(Backward())
+dmethod = OrthogonalCollocation(4)
+# dmethod = FiniteDifference(Backward())
 
 # Define the InfiniteModel
 im = InfiniteModel(Ipopt.Optimizer)
@@ -24,6 +24,7 @@ end)
 @constraint(im, [i = 1:2], ∂(x[i], t) == v[i])
 @constraint(im, [i = 1:2], ∂(v[i], t) == u[i])
 @constraint(im, [i = 1:2, j = eachindex(tw)], x[i](tw[j]) == xw[i, j])
+constant_over_collocation.(u, t) # needed for collocation
 
 # Create the ExaModel and solve both models to compare
 @time em, mappings = exa_model(im)

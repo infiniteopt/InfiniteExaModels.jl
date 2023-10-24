@@ -8,8 +8,8 @@ Random.seed!(42)
 β = 0.727
 N = 1e5
 extra_ts = [0.001, 0.002, 0.004, 0.008, 0.02, 0.04, 0.08, 0.2, 0.4, 0.8]
-# dmethod = OrthogonalCollocation(3)
-dmethod = FiniteDifference(Backward())
+dmethod = OrthogonalCollocation(3)
+# dmethod = FiniteDifference(Backward())
 
 # Create the infinite model
 im = InfiniteModel(Ipopt.Optimizer)
@@ -32,6 +32,7 @@ add_supports(t, extra_ts)
 @constraint(im, i_constr, ∂(i, t) == ξ * e - γ * i)
 @constraint(im, r_constr, ∂(r, t) == γ * i)
 @constraint(im, imax_constr, i ≤ 0.02)
+constant_over_collocation(u, t) # needed for collocation
 
 # Create the ExaModel and solve both models to compare
 @time em, mappings = exa_model(im)

@@ -2,8 +2,9 @@ using InfiniteExaModels
 using InfiniteOpt, Distributions, NLPModelsIpopt, Ipopt, Random
 using ExaModelsExamples
 using LinearAlgebra
+using AmplNLWriter
 
-function main(filename = "pglib_opf_case3_lmbd.m"; seed = 0, num_supports = 10)
+function opf(filename = "pglib_opf_case3_lmbd.m"; seed = 0, num_supports = 100)
     
     ref = ExaModelsExamples.get_power_data_ref(filename)
     
@@ -45,6 +46,37 @@ function main(filename = "pglib_opf_case3_lmbd.m"; seed = 0, num_supports = 10)
     # Define the infinite model
     im = InfiniteModel(Ipopt.Optimizer)
     # set_silent(im)
+
+    # first stage variables
+    @variable(im, va0[i in keys(ref[:bus])])
+    @variable(
+        im,
+        ref[:bus][i]["vmin"] <= vm0[i in keys(ref[:bus])] <= ref[:bus][i]["vmax"],
+        start = 1.0
+    )
+    @variable(
+        im,
+        ref[:gen][i]["pmin"] <= pg0[i in keys(ref[:gen])] <= ref[:gen][i]["pmax"],
+    )
+    @variable(
+        im,
+        ref[:gen][i]["qmin"] <= qg0[i in keys(ref[:gen])] <= ref[:gen][i]["qmax"],
+    )
+
+    @variable(
+        im,
+        -ref[:branch][l]["rate_a"] <=
+            p0[(l, i, j) in ref[:arcs]] <=
+            ref[:branch][l]["rate_a"]
+    )
+    @variable(
+        im,
+        -ref[:branch][l]["rate_a"] <=
+            q0[(l, i, j) in ref[:arcs]] <=
+            ref[:branch][l]["rate_a"]
+    )
+    
+    # second stage variables
     @infinite_parameter(im, θ[i = 1:n_θ] ~ MvNormal(θ_nom, covar), num_supports = num_supports)
 
     @variable(im, va[i in keys(ref[:bus])], Infinite(θ))
@@ -74,34 +106,6 @@ function main(filename = "pglib_opf_case3_lmbd.m"; seed = 0, num_supports = 10)
             q[(l, i, j) in ref[:arcs]] <=
             ref[:branch][l]["rate_a"], Infinite(θ)
     )
-
-    @variable(im, va0[i in keys(ref[:bus])])
-    @variable(
-        im,
-        ref[:bus][i]["vmin"] <= vm0[i in keys(ref[:bus])] <= ref[:bus][i]["vmax"],
-        start = 1.0
-    )
-    @variable(
-        im,
-        ref[:gen][i]["pmin"] <= pg0[i in keys(ref[:gen])] <= ref[:gen][i]["pmax"],
-    )
-    @variable(
-        im,
-        ref[:gen][i]["qmin"] <= qg0[i in keys(ref[:gen])] <= ref[:gen][i]["qmax"],
-    )
-
-    @variable(
-        im,
-        -ref[:branch][l]["rate_a"] <=
-            p0[(l, i, j) in ref[:arcs]] <=
-            ref[:branch][l]["rate_a"]
-    )
-    @variable(
-        im,
-        -ref[:branch][l]["rate_a"] <=
-            q0[(l, i, j) in ref[:arcs]] <=
-            ref[:branch][l]["rate_a"]
-    )
     
     @objective(
         im,
@@ -109,7 +113,7 @@ function main(filename = "pglib_opf_case3_lmbd.m"; seed = 0, num_supports = 10)
         sum(gen["cost"][1] * pg0[i]^2 + gen["cost"][2] * pg0[i] + gen["cost"][3] for (i, gen) in ref[:gen])
     )
 
-    # first stage
+    # first stage constraints
     @constraint(im, [(i, bus) in ref[:ref_buses]], va0[i] == 0)
     @constraint(
         im,
@@ -173,8 +177,7 @@ function main(filename = "pglib_opf_case3_lmbd.m"; seed = 0, num_supports = 10)
         )
     end
 
-    ####################################################
-    # second stage
+    # second stage constraints
     @constraint(im, [(i, bus) in ref[:ref_buses]], va[i] == 0)
     @constraint(
         im,
@@ -250,10 +253,25 @@ function main(filename = "pglib_opf_case3_lmbd.m"; seed = 0, num_supports = 10)
 
     
     # Create the ExaModel and solve both models to compare
+    set_optimizer_attribute(im, "linear_solver", "ma27")
+    set_optimizer_attribute(im, "print_timing_statistics", "yes")
+    set_optimizer_attribute(im, "output_file", joinpath("logs","opf_jump_$(filename)_$(num_supports)_$(seed).log"))
     optimize!(im)
-    
+
     @time em, mappings = exa_model(im)
-    result = ipopt(em)
+    ipopt(
+        em;
+        linear_solver="ma27",
+        print_timing_statistics = "yes",
+        output_file = joinpath("logs","opf_exa_$(filename)_$(num_supports)_$(seed).log")
+    ) # force compile
+    result = ipopt(
+        em;
+        linear_solver="ma27",
+        print_timing_statistics = "yes",
+        output_file = joinpath("logs","opf_exa_$(filename)_$(num_supports)_$(seed).log")
+    )
+
 
     # Get the answers
     epg0 = [result.solution[mappings.finvar_mappings[v].i] for v in pg0.data]
@@ -269,4 +287,3 @@ function main(filename = "pglib_opf_case3_lmbd.m"; seed = 0, num_supports = 10)
     println("InfiniteModel pg0: ", ipg0)
 end
 
-main()

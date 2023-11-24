@@ -1,0 +1,36 @@
+\documentclass{standalone}
+\usepackage{lscape}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{times}
+
+\begin{document}
+\centering
+\begin{tabular}{|c|c|c|cc|cc|c|c|c|cc|cc|}
+  \hline
+  \multicolumn{7}{|c|}{\textbf{stochastic optimal power flow}} & \multicolumn{7}{|c|}{\textbf{quadrotor optimal control}} \\\hline 
+  \multirow{2}{*}{nscen}
+  &
+  \multirow{2}{*}{nvar}&
+  \multirow{2}{*}{ncon}&
+  \multicolumn{2}{|c|}{ExaModels} & \multicolumn{2}{|c|}{JuMP} &
+  \multirow{2}{*}{ndisc}
+  &
+  \multirow{2}{*}{nvar}&
+  \multirow{2}{*}{ncon}&
+  \multicolumn{2}{|c|}{ExaModels} & \multicolumn{2}{|c|}{JuMP}  \\
+  \cline{4-7}
+  \cline{11-14} 
+  &
+  & 
+  & deriv. time & total time& deriv. time & total time
+  &
+  &
+  & 
+  & deriv. time & total time& deriv. time & total time
+  \\
+  %% data %%
+  \\
+  \hline
+\end{tabular}
+\end{document}

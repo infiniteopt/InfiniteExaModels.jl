@@ -923,8 +923,8 @@ function build_exa_core!(
 end
 
 # Create an ExaModel from an InfiniteModel
-function exa_model(inf_model::InfiniteOpt.InfiniteModel)
-    core = ExaModels.ExaCore()
+function exa_model(inf_model::InfiniteOpt.InfiniteModel; backend = nothing)
+    core = ExaModels.ExaCore(; backend = backend)
     data = MappingData()
     build_exa_core!(core, data, inf_model)
     return ExaModels.ExaModel(core), data 

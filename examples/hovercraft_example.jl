@@ -6,7 +6,7 @@ using InfiniteOpt, NLPModelsIpopt, Ipopt
 xw = [1 4 6 1; 1 3 0 1] # positions
 tw = [0, 25, 50, 60];    # times
 dmethod = OrthogonalCollocation(4)
-# dmethod = FiniteDifference(Backward())
+dmethod = FiniteDifference(Backward())
 
 # Define the InfiniteModel
 im = InfiniteModel(Ipopt.Optimizer)

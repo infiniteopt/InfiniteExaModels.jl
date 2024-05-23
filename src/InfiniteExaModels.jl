@@ -63,10 +63,14 @@ function _build_base_iterators(
     for group in param_groups # group will either be singular ref or a vector of refs
         # generate all the symbols for created named tuples
         for pref in group
-            data.param_alias[pref] = gensym()
+            data.param_alias[pref] = if group isa Vector
+                Symbol("dp$(pref.raw_index)$(pref.param_index)")
+            else
+                Symbol("ip$(pref.raw_index)")
+            end
         end
         aliases = map(pref -> data.param_alias[pref], group)
-        itr_sym = gensym()
+        itr_sym = Symbol("group_idx$(length(data.group_alias)+1)")
         push!(data.group_alias, itr_sym)
         # setup the supports (discretization points)
         InfiniteOpt.add_generative_supports(first(group))
@@ -181,7 +185,8 @@ function _add_parameter_functions(
             supp = [s for nt in i for s in Iterators.drop(values(nt), 1)]
             vals[first.(i)...] = obj.func.func(Tuple(supp, prefs)...)
         end
-        data.pfunc_info[pfref] = (gensym(), vals)
+        alias = Symbol("pf$(idx.value)")
+        data.pfunc_info[pfref] = (alias, vals)
     end
     return
 end
@@ -212,7 +217,8 @@ function _process_semi_infinite_var(vref, data)
     # store the desired information
     if ivref.index_type == InfiniteOpt.ParameterFunctionIndex
         indexing[isa.(indexing, Symbol)] .= Colon()
-        data.pfunc_info[vref] = (gensym(), data.pfunc_info[ivref][2][indexing...])
+        alias = Symbol("rpf$(vref.raw_index)")
+        data.pfunc_info[vref] = (alias, data.pfunc_info[ivref][2][indexing...])
     else
         data.semivar_info[vref] = (data.infvar_mappings[ivref], indexing)
     end
@@ -265,13 +271,10 @@ function _add_point_variables(
 end
 
 # Map variable references based on their underlying type
-# Note: these all will have access to input `p` which is a named tuple from the iterator
-function _map_variable(vref, data)
-    return _map_variable(vref, vref.index_type, data)
-end
 function _map_variable(
     vref, 
     ::Type{InfiniteOpt.FiniteVariableIndex}, 
+    itr_par,
     data
     )
     return data.finvar_mappings[vref]
@@ -279,6 +282,7 @@ end
 function _map_variable(
     vref, 
     ::Type{InfiniteOpt.PointVariableIndex}, 
+    itr_par,
     data
     )
     if haskey(data.finvar_mappings, vref) 
@@ -292,16 +296,17 @@ end
 function _map_variable(
     vref, 
     ::Type{V}, 
+    itr_par,
     data
     ) where V <: Union{InfiniteOpt.InfiniteVariableIndex, InfiniteOpt.DerivativeIndex}
     group_idxs = InfiniteOpt._object_numbers(vref)
-    ex = Expr(:ref, :($(data.infvar_mappings[vref])))
-    append!(ex.args, :(p.$(data.group_alias[i])) for i in group_idxs)
-    return ex
+    idx_pars = (itr_par[data.group_alias[i]] for i in group_idxs)
+    return data.infvar_mappings[vref][idx_pars...]
 end
 function _map_variable(
     vref, 
     ::Type{InfiniteOpt.SemiInfiniteVariableIndex}, 
+    itr_par,
     data
     )
     if !haskey(data.semivar_info, vref) && !haskey(data.pfunc_info, vref)
@@ -309,23 +314,24 @@ function _map_variable(
     end
     if haskey(data.semivar_info, vref)
         ivar, inds = data.semivar_info[vref]
-        ex = Expr(:ref, :($ivar))
-        append!(ex.args, i isa Int ? i : :(p.$i) for i in inds)
-        return ex
+        idx_pars = (i isa Int ? i : itr_par[i] for i in inds)
+        return ivar[idx_pars...]
     else # we have a reduced parameter function
-        return :(p.$(data.pfunc_info[vref][1]))
+        return itr_par[data.pfunc_info[vref][1]]
     end
 end
 function _map_variable(
     vref, 
     ::Type{<:InfiniteOpt.InfiniteParameterIndex}, 
+    itr_par,
     data
     )
-    return :(p.$(data.param_alias[vref]))
+    return itr_par[data.param_alias[vref]]
 end
 function _map_variable(
     vref, 
     ::Type{InfiniteOpt.FiniteParameterIndex}, 
+    itr_par,
     data
     )
     return InfiniteOpt.parameter_value(vref)
@@ -333,34 +339,127 @@ end
 function _map_variable(
     vref, 
     ::Type{InfiniteOpt.ParameterFunctionIndex}, 
+    itr_par,
     data
     )
-    return :(p.$(data.pfunc_info[vref][1]))
+    return itr_par[data.pfunc_info[vref][1]]
 end
 function _map_variable(
     vref, 
     IdxType, 
+    itr_par,
     data
     )
     error("Unable to add `$vref` to an ExaModel, it's index type `$IdxType`" *
           " is not yet supported by InfiniteExaModels.")
 end
 
-# Make an a julia function for generators of the form `p -> expr` where `p` is a namedtuple
-function _make_expr_ast(expr, data)
-    # TODO add operator mapper argument
-    return InfiniteOpt.map_expression_to_ast(v -> _map_variable(v, data), expr)
+# Store the mappings between JuMP's operator names and the functions supported by ExaModels
+const _op_mappings = Dict{Symbol, Function}(
+    :+ => +,
+    :- => -,
+    :* => *,
+    :/ => /,
+    :^ => ^,
+    :inv => inv,
+    :sqrt => sqrt,
+    :cbrt => cbrt,
+    :abs => abs,
+    :abs2 => abs2,
+    :exp => exp,
+    :exp2 => exp2,
+    :log => log,
+    :log2 => log2,
+    :log10 => log10,
+    :log1p => log1p,
+    :sin => sin,
+    :cos => cos,
+    :tan => tan,
+    :asin => asin,
+    :acos => acos,
+    :csc => csc,
+    :sec => sec,
+    :cot => cot,
+    :atan => atan,
+    :acot => acot,
+    :sind => sind,
+    :cosd => cosd,
+    :tand => tand,
+    :cscd => cscd,
+    :secd => secd,
+    :cotd => cotd,
+    :atand => atand,
+    :acotd => acotd,
+    :sinh => sinh,
+    :cosh => cosh,
+    :tanh => tanh,
+    :csch => csc,
+    :sech => sech,
+    :coth => coth,
+    :atanh => atanh,
+    :acoth => acoth,
+    # TODO add the remaining JuMP operators
+)
+
+# Map a nonlinear function symbol to the underlying function
+function _nl_op(s::Symbol)
+    if !haskey(_op_mappings, s)
+        error("`InfiniteExaModel`s does not support the nonlinear operator `$s`.")
+    end
+    return _op_mappings[s]
 end
 
-# Make generator function from AST expression
-function _make_gen_func(expr_code)
-    func_code = :(p -> $expr_code) # p is a namedtuple with all the parameters
-    return x -> Base.invokelatest(eval(func_code), x)
+# Convert as InfiniteOpt expression into a ExaModel expression using the ParIndexed `itr_par`
+# TODO ensure that this never returns a raw constant at the very end, maybe use ExaModels.Null...
+function _exafy(vref::InfiniteOpt.GeneralVariableRef, itr_par, data)
+    return _map_variable(vref, vref.index_type, itr_par, data)
 end
-
-# Construct a Julia function that is compatible with a generator for building ExaModels
-function _make_expr_gen_func(expr, data)
-    return _make_gen_func(_make_expr_ast(expr, data))
+function _exafy(
+    aff::JuMP.GenericAffExpr{C, InfiniteOpt.GeneralVariableRef}, 
+    itr_par, 
+    data
+    ) where {C}
+    c = JuMP.constant(aff)
+    if !isempty(aff.terms)
+        ex = sum(begin
+            v_ex = _exafy(v, itr_par, data) 
+            isone(c) ? v_ex : c * v_ex
+            end for (c, v) in JuMP.linear_terms(aff)
+            )
+        return iszero(c) ? ex : ex + c
+    else
+        return c
+    end
+end
+function _exafy(
+    quad::JuMP.GenericQuadExpr{C, InfiniteOpt.GeneralVariableRef}, 
+    itr_par, 
+    data
+    ) where {C}
+    aff = _exafy(quad.aff, itr_par, data)
+    if !isempty(quad.terms)
+        ex = sum(begin 
+            if v1 == v2
+                v_ex = _exafy(v1, itr_par, data) 
+                isone(c) ? abs2(v_ex) : c * abs2(v_ex)
+            else
+                v1_ex = _exafy(v1, itr_par, data) 
+                v2_ex = _exafy(v2, itr_par, data) 
+                isone(c) ? v1_ex * v2_ex : c * v1_ex * v2_ex
+            end
+            end for (c, v1, v2) in JuMP.quad_terms(quad)
+            )
+        return iszero(quad.aff) ? ex : ex + aff
+    else
+        return aff
+    end
+end
+function _exafy(
+    nl::JuMP.GenericNonlinearExpr{InfiniteOpt.GeneralVariableRef}, 
+    itr_par, 
+    data
+    )
+    return _nl_op(nl.head)((_exafy(a, itr_par, data) for a in nl.args)...)
 end
 
 # Extract the constraint bounds from an MOI set
@@ -422,8 +521,7 @@ function _add_constraints(
         end
         set = JuMP.moi_set(constr)
         group_idxs = InfiniteOpt._object_numbers(cref)
-        # prepare the expression function and the iterator
-        func = _make_expr_gen_func(expr, data)
+        # prepare the iterator of NamedTuples (contains support values, iterator values, and constants from parameter functions)
         if isempty(group_idxs) # we have a finite constraint
             itr = [(;)]
         elseif length(group_idxs) == 1 # we only depend on one independent infinite parameter
@@ -436,16 +534,17 @@ function _add_constraints(
         if InfiniteOpt.has_domain_restrictions(cref)
             error("`DomainRestrictions` are not currently supported by InfiniteExaModels.")
         end
-        # Update the iterator to include parameter function values
+        # update the iterator to include parameter function values
         if !isempty(data.pfunc_info)
             itr = _add_parameter_functions_to_itr(expr, itr, data)
         end
-        # make the expression generator
-        gen = Base.Generator(func, itr)
+        # create the ExaModels expression tree based on expr
+        itr_par = ExaModels.Par(typeof(first(itr)))
+        em_expr = _exafy(expr, itr_par, data)
         # get the constraint bounds
         lb, ub = _get_constr_bounds(set)
         # create the ExaModels constraint
-        con = ExaModels.constraint(core, gen, lcon = lb, ucon = ub)
+        con = ExaModels.constraint(core, em_expr, itr, lcon = lb, ucon = ub)
         data.constraint_mappings[cref] = con
     end
     return
@@ -660,8 +759,7 @@ const _ObjMeasureExpansionWarn = string(
 
 # Write a finite expression `expr` in a single objective term (this is a generic fallback)
 function _add_generic_objective_term(core, expr, data)
-    func = _make_expr_gen_func(expr, data)
-    ExaModels.objective(core, Base.Generator(func, [(;)]))
+    ExaModels.objective(core, _exafy(expr, (;), data), [(;)])
     return
 end
 
@@ -714,14 +812,15 @@ end
 function _add_objective_aff_term(core, coef, vref, ::Type{InfiniteOpt.MeasureIndex}, data)
     # process the measure structure recursively as needed
     mexpr, itr = _process_measure_sum(vref, data)
-    expr_code = _make_expr_ast(coef * mexpr, data)
-    func = _make_gen_func(:(p.c * $expr_code))
     # update the iterator to include parameter function values
     if !isempty(data.pfunc_info)
         itr = _add_parameter_functions_to_itr(mexpr, itr, data)
     end
+    # prepare the examodel expression tree
+    itr_par = ExaModels.Par(typeof(first(itr)))
+    em_expr = itr_par.c * _exafy(coef * mexpr, itr_par, data)
     # add the term to the objective
-    ExaModels.objective(core, Base.Generator(func, itr))
+    ExaModels.objective(core, em_expr, itr)
     return
 end
 function _add_objective_aff_term(core, coef, vref, _, data)
@@ -765,8 +864,7 @@ function _add_objective(
     end
     c = JuMP.constant(aff)
     if !iszero(c)
-        error("ExaModels does not support objectives with constant terms.")
-        # ExaModels.objective(core, c for _ in 1:1) # TODO see if we can make this work
+        ExaModels.objective(core, ExaModel.Null(c))
     end
     return
 end

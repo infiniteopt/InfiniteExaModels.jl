@@ -6,6 +6,6 @@ MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 
 [compat]
-ExaModels = "0.4"
+ExaModels = "0.7"
 JuMP = "1.15"
 MathOptInterface = "1.20"

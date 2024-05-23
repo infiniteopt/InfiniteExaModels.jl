@@ -414,6 +414,9 @@ end
 function _exafy(vref::InfiniteOpt.GeneralVariableRef, itr_par, data)
     return _map_variable(vref, vref.index_type, itr_par, data)
 end
+function _exafy(c::Number, itr_par, data)
+    return c
+end
 function _exafy(
     aff::JuMP.GenericAffExpr{C, InfiniteOpt.GeneralVariableRef}, 
     itr_par, 

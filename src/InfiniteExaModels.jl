@@ -126,7 +126,7 @@ function _add_finite_variables(
     return
 end
 
-# Add all the infinite variables from an InfiniteModel to a ExaCore
+# Add all the infinite variables (and derivatives) from an InfiniteModel to a ExaCore
 function _add_infinite_variables(
     core::ExaModels.ExaCore, 
     data::MappingData,
@@ -142,6 +142,22 @@ function _add_infinite_variables(
         # retrieve the basic info
         var = InfiniteOpt._core_variable_object(vref)
         group_idxs = InfiniteOpt._object_numbers(vref)
+        # add extra derivatives if needed
+        if var isa InfiniteOpt.Derivative
+            method = InfiniteOpt.derivative_method(vref)
+            # if needed process lower order derivatives
+            if !InfiniteOpt.allows_high_order_derivatives(method) && var.order > 1
+                for o in var.order-1:-1:1
+                    if !haskey(inf_model.deriv_lookup, (var.variable_ref, var.parameter_ref, o))
+                        info = JuMP.VariableInfo(false, NaN, false, NaN, false, NaN, false, 
+                                                s -> NaN, false, false)
+                        new_d = InfiniteOpt.Derivative(info, true, var.variable_ref, var.parameter_ref, o)
+                        new_dref = InfiniteOpt.add_derivative(inf_model, new_d)
+                        push!(ivrefs, new_dref)
+                    end
+                end
+            end
+        end
         # iterate through the supports to get the start values 
         itrs = map(i -> data.base_itrs[i], group_idxs)
         dims = length.(itrs)
@@ -553,154 +569,51 @@ function _add_constraints(
     return
 end
 
-# Create the parameter iterator for finite difference methods
-function _finite_diff_itr(
-    method::InfiniteOpt.FiniteDifference{InfiniteOpt.Backward}, 
-    srt_itr,
-    p_alias
-    )
-    offset = zip(Iterators.drop(srt_itr, 1), srt_itr) # current, previous
-    itr = [merge(p1, (; dt = p1[p_alias] - p2[p_alias], i1 = p1[1], i2 = p2[1])) for (p1, p2) in offset]
-    return method.add_boundary_constraint ? itr : itr[1:end-1]
-end
-function _finite_diff_itr(
-    method::InfiniteOpt.FiniteDifference{InfiniteOpt.Forward}, 
-    srt_itr,
-    p_alias
-    )
-    offset = zip(Iterators.drop(srt_itr, 1), srt_itr) # next, current
-    itr = [merge(p2, (; dt = p1[p_alias] - p2[p_alias], i1 = p1[1], i2 = p2[1])) for (p1, p2) in offset]
-    return method.add_boundary_constraint ? itr : itr[2:end]
-end
-function _finite_diff_itr(
-    ::InfiniteOpt.FiniteDifference{InfiniteOpt.Central}, 
-    srt_itr,
-    p_alias
-    )
-    offset = zip(Iterators.drop(srt_itr, 2), Iterators.drop(srt_itr, 1), srt_itr) # next, current, prev
-    return [merge(pc, (; dt = p1[p_alias] - p2[p_alias], i1 = p1[1], i2 = p2[1])) for (p1, pc, p2) in offset]
-end
-function _finite_diff_itr(method, srt_itr, p_alias)
-    error("Unsupported finite difference approximation technique `$(method.technique)`.")
+# Make a placeholder model such that we can extend `make_reduced_expr`
+# Moreover, provide the additional information we need
+struct _DerivReductionPlaceholderModel{P} <: JuMP.AbstractModel
+    data::MappingData
+    itr_par::P
 end
 
-# Add auxiliary equations to make deriviative variables well-defined
-function _add_deriv_equations(core, dref, data, method::InfiniteOpt.FiniteDifference)
-    # gather the variables
-    vref = InfiniteOpt.derivative_argument(dref) 
-    pref = InfiniteOpt.operator_parameter(dref)
-    # gather the needed infinite parameter data
-    group_idxs = InfiniteOpt._object_numbers(vref)
-    pref_group = InfiniteOpt._object_number(pref)
-    # prepare the iterator for the equations
-    p_alias = data.param_alias[pref]
-    base_itr = data.base_itrs[pref_group]
-    if length(first(base_itr)) == 2 # we have a independent parameter (the supports are sorted already)
-        srt_itr = base_itr
-    else # we have a dependent parameter (supports are not sorted)
-        srt_itr = sort(base_itr, by = p -> p[p_alias])
-    end
-    pref_itr = _finite_diff_itr(method, srt_itr, p_alias)
-    itrs = [g == pref_group ? pref_itr : data.base_itrs[g] for g in group_idxs]
-    itr = [merge(i...) for i in Iterators.product(itrs...)]
-    # make the expression function for the generator
-    dvar = data.infvar_mappings[dref]
-    d_inds = map(g -> data.group_alias[g], group_idxs)
-    if vref.index_type == InfiniteOpt.SemiInfiniteVariableIndex
-        ivar, inds = data.semivar_info[vref]
-        g_alias = data.group_alias[pref_group]
-        inds1 = Tuple(i == g_alias ? :i1 : i for i in inds)
-        inds2 = Tuple(i == g_alias ? :i2 : i for i in inds)
-        f = p -> dvar[values(p[d_inds])...] * p.dt - ivar[(i isa Int ? i : p[i] for i in inds1)...] + ivar[(i isa Int ? i : p[i] for i in inds2)...]
-    elseif vref.index_type == InfiniteOpt.InfiniteVariableIndex
-        ivar = data.infvar_mappings[vref]
-        inds1 = Tuple(g == pref_group ? :i1 : data.group_alias[g] for g in group_idxs)
-        inds2 = Tuple(g == pref_group ? :i2 : data.group_alias[g] for g in group_idxs)
-        f = p -> dvar[values(p[d_inds])...] * p.dt - ivar[values(p[inds1])...] + ivar[values(p[inds2])...]
-    else # TODO try to make measures work...
-        error("Derivatives that act on references with index type `$(vref.index_type)` are not supported by InfiniteExaModels.")
-    end
-    # add the equations to core
-    gen = Base.Generator(f, itr)
-    ExaModels.constraint(core, gen) # TODO add mapping?
-    return 
-end
-function _add_deriv_equations(
-    core, 
-    dref, 
-    data, 
-    method::InfiniteOpt.OrthogonalCollocation{InfiniteOpt.MeasureToolbox.GaussLobatto}
+# Extend make_reduced_expr to create an ExaModel expression
+function InfiniteOpt.make_reduced_expr(
+    vref::InfiniteOpt.GeneralVariableRef,
+    pref::InfiniteOpt.GeneralVariableRef,
+    supps::Vector{Float64},
+    idx,
+    dispatch_model::_DerivReductionPlaceholderModel
     )
-    # gather the variables
-    vref = InfiniteOpt.derivative_argument(dref) 
-    pref = InfiniteOpt.operator_parameter(dref)
-    # gather the needed infinite parameter data
-    group_idxs = InfiniteOpt._object_numbers(vref)
-    pref_group = InfiniteOpt._object_number(pref)
-    pref_alias = data.group_alias[pref_group]
-    aliases = Tuple(data.group_alias[g] for g in group_idxs)
-    other_idxs = filter(i -> i != pref_group, group_idxs)
-    # prepare the iterator for base equations
-    n_nodes = method.num_nodes - 1 # we want the # of nodes in each element (excluding the lb)
-    n_supps = length(data.base_itrs[pref_group])
-    pref_itr = [(i1 = n, i2 = lb) for (n, lb) in zip(2:n_supps, repeat(1:n_nodes:n_supps-1, inner = n_nodes))]
-    other_itrs = Tuple(data.base_itrs[g] for g in other_idxs)
-    base_itr = vec([merge(i...) for i in Iterators.product(other_itrs..., pref_itr)])
-    # create the base constraints (the summation portion excluded)
+    group_idx = InfiniteOpt._object_number(pref)
+    data = dispatch_model.data
+    itr_par = dispatch_model.itr_par
+    alias = data.group_alias[group_idx]
     if vref.index_type == InfiniteOpt.SemiInfiniteVariableIndex
+        @assert haskey(data.semivar_info, vref)
         ivar, inds = data.semivar_info[vref]
-        inds1 = Tuple(i == pref_alias ? :i1 : i for i in inds)
-        inds2 = Tuple(i == pref_alias ? :i2 : i for i in inds)
-        f = p -> -ivar[(i isa Int ? i : p[i] for i in inds1)...] + ivar[(i isa Int ? i : p[i] for i in inds2)...]
-    elseif vref.index_type == InfiniteOpt.InfiniteVariableIndex
-        ivar = data.infvar_mappings[vref]
-        inds1 = Tuple(a == pref_alias ? :i1 : a for a in aliases)
-        inds2 = Tuple(a == pref_alias ? :i2 : a for a in aliases)
-        f = p -> -ivar[values(p[inds1])...] + ivar[values(p[inds2])...]
-    else # TODO try to make measures work...
-        error("Derivatives that act on references with index type `$(vref.index_type)` are not supported by InfiniteExaModels.")
-    end
-    base_con = ExaModels.constraint(core, Base.Generator(f, base_itr))
-    # augment the base constraints with the summation terms
-    all_supps = InfiniteOpt.supports(pref, label = InfiniteOpt.All)
-    num_repeats = reduce(*, length.(other_itrs), init = 1)
-    linear_idxs = LinearIndices(Tuple(1:length(data.base_itrs[g]) for g in group_idxs))
-    itr_len = (n_supps-1) * n_nodes * num_repeats
-    aug_itr = Vector{NamedTuple{(:i, :c, :idx), Tuple{Int, Float64, Int}}}(undef, itr_len)
-    counter = 1
-    for i in 1:n_nodes:n_supps-1
-        # collect the supports
-        lb = all_supps[i]
-        i_nodes = all_supps[i+1:i+n_nodes] .- lb
-        # build the matrices in memory order (column-wise using the transpose form)
-        M1t = Matrix{Float64}(undef, n_nodes, n_nodes)
-        M2t = Matrix{Float64}(undef, n_nodes, n_nodes)
-        for j in eachindex(i_nodes) # support index
-            for k in eachindex(i_nodes) # polynomial index
-                M1t[k, j] = k * i_nodes[j]^(k-1)
-                M2t[k, j] = i_nodes[j]^k
+        idx_pars = (begin 
+            if i isa Int
+                i 
+            elseif i == alias
+                idx
+            else
+                itr_par[i] 
             end
-        end
-        Minvt = M1t \ M2t
-        for j in eachindex(i_nodes)
-            for k in eachindex(i_nodes)
-                for n in 1:num_repeats # repeat for the other parameter combinations
-                    base_itr_idx = (i + j - 2) * num_repeats + n # exploiting the fact that the pref_itr is last in the product
-                    pref_idx = i + k # needs to index the support at i_nodes[k] + lb
-                    dvar_idx = (a == pref_alias ? pref_idx : base_itr[base_itr_idx][a] for a in aliases)
-                    aug_itr[counter] = (; i = base_itr_idx, c = Minvt[k, j], idx = linear_idxs[dvar_idx...])
-                    counter += 1
-                end
-            end
-        end
+            end for i in inds)
+        return ivar[idx_pars...]
+    else # either an infinite variable or a derivative variable
+        group_idxs = InfiniteOpt._object_numbers(vref)
+        idx_pars = (begin 
+            g_alias = data.group_alias[i]
+            if g_alias == alias
+                idx
+            else
+                itr_par[g_alias]
+            end 
+            end for i in group_idxs)
+        return data.infvar_mappings[vref][idx_pars...]
     end
-    dvar = data.infvar_mappings[dref]
-    g = p -> p.i => p.c * dvar[p.idx]
-    ExaModels.constraint!(core, base_con, Base.Generator(g, aug_itr))
-    return 
-end
-function _add_deriv_equations(core, dref, data, method)
-    error("Unsupported derivative reformulation method `$method`.")
+    return
 end
 
 # Add the approximation equations for each derivative variable
@@ -710,7 +623,59 @@ function _add_derivative_approximations(
     inf_model::InfiniteOpt.InfiniteModel
     )
     for dref in InfiniteOpt.all_derivatives(inf_model)
-        _add_deriv_equations(core, dref, data, InfiniteOpt.derivative_method(dref))
+        # gather the derivative information
+        vref = InfiniteOpt.derivative_argument(dref) 
+        pref = InfiniteOpt.operator_parameter(dref)
+        order = InfiniteOpt.derivative_order(dref)
+        method = InfiniteOpt.derivative_method(dref)
+        # check whether vref type is supported
+        if vref.index_type in (InfiniteOpt.MeasureIndex, InfiniteOpt.ParameterFunctionIndex)
+            error("Derivatives of measures and/or parameter functions are not " * 
+                  "currently supported by InfiniteExaModels.")
+        end
+        # take care of derivative nesting if appropriate
+        if !InfiniteOpt.allows_high_order_derivatives(method) && order > 1
+            d_idx = inf_model.deriv_lookup[vref, pref, order - 1]
+            vref = InfiniteOpt._make_variable_ref(inf_model, d_idx)
+        end
+        # gather the needed infinite parameter data
+        group_idxs = InfiniteOpt._object_numbers(vref)
+        pref_group = InfiniteOpt._object_number(pref)
+        # sort the base support iterator 
+        p_alias = data.param_alias[pref]
+        base_itr = data.base_itrs[pref_group]
+        if length(first(base_itr)) == 2 # we have a independent parameter (the supports are sorted already)
+            srt_itr = base_itr
+        else # we have a dependent parameter (supports are not sorted)
+            srt_itr = sort(base_itr, by = p -> p[p_alias])
+        end
+        # collect the expression data
+        supps = map(p -> p[p_alias], srt_itr)
+        idxs, arg_itrs... = InfiniteOpt.derivative_expr_data(dref, order, supps, method)
+        # make the iterator
+        aliases = Tuple(Symbol("d_arg$i") for i in eachindex(arg_itrs))
+        pref_itr = [(; srt_itr[i]..., zip(aliases, args)...) for (i, args...) in zip(idxs, arg_itrs...)]
+        if length(group_idxs) > 1
+            itrs = [g == pref_group ? pref_itr : data.base_itrs[g] for g in group_idxs]
+            itr = [merge(i...) for i in Iterators.product(itrs...)]
+        else
+            itr = pref_itr
+        end
+        # make the ExaModel expression tree
+        itr_par = ExaModels.Par(typeof(first(itr)))
+        em_expr = InfiniteOpt.make_indexed_derivative_expr(
+            dref, 
+            vref, 
+            pref, 
+            order, 
+            itr_par[pref_group], 
+            supps, 
+            _DerivReductionPlaceholderModel(data, itr_par),
+            method,
+            (itr_par[a] for a in aliases)...
+            )
+        # add the constraint
+        ExaModels.constraint(core, em_expr, itr)
     end
     return
 end

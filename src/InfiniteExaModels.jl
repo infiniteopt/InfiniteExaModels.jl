@@ -144,6 +144,11 @@ function _add_infinite_variables(
         group_idxs = InfiniteOpt._object_numbers(vref)
         # add extra derivatives if needed
         if var isa InfiniteOpt.Derivative
+            # check whether vref type is supported
+            if var.variable_Ref.index_type in (InfiniteOpt.MeasureIndex, InfiniteOpt.ParameterFunctionIndex)
+                error("Derivatives of measures and/or parameter functions are not " * 
+                    "currently supported by InfiniteExaModels.")
+            end
             method = InfiniteOpt.derivative_method(vref)
             # if needed process lower order derivatives
             if !InfiniteOpt.allows_high_order_derivatives(method) && var.order > 1
@@ -628,11 +633,6 @@ function _add_derivative_approximations(
         pref = InfiniteOpt.operator_parameter(dref)
         order = InfiniteOpt.derivative_order(dref)
         method = InfiniteOpt.derivative_method(dref)
-        # check whether vref type is supported
-        if vref.index_type in (InfiniteOpt.MeasureIndex, InfiniteOpt.ParameterFunctionIndex)
-            error("Derivatives of measures and/or parameter functions are not " * 
-                  "currently supported by InfiniteExaModels.")
-        end
         # take care of derivative nesting if appropriate
         if !InfiniteOpt.allows_high_order_derivatives(method) && order > 1
             d_idx = inf_model.deriv_lookup[vref, pref, order - 1]
@@ -708,11 +708,12 @@ function _add_collocation_restrictions(
             aliases = (data.group_alias[g] for g in group_idxs)
             itrs = (g == pref_group ? pref_itr : data.base_itrs[g] for g in group_idxs)
             itr = vec([merge(i...) for i in Iterators.product(itrs...)])
+            itr_par = ExaModels.Par(typeof(first(itr)))
+            idx_pars1 = (a == pref_alias ? itr_par[:i1] : itr_par[a] for a in aliases)
+            idx_pars2 = (a == pref_alias ? itr_par[:i2] : itr_par[a] for a in aliases)
             ivar = data.infvar_mappings[vref]
-            inds1 = Tuple(a == pref_alias ? :i1 : a for a in aliases)
-            inds2 = Tuple(a == pref_alias ? :i2 : a for a in aliases)
-            f = p -> ivar[values(p[inds1])...] - ivar[values(p[inds2])...]
-            ExaModels.constraint(core, Base.Generator(f, itr))
+            em_expr = ivar[idx_pars1...] - ivar[idx_pars2...]
+            ExaModels.constraint(core, em_expr, itr)
         end
     end
     return

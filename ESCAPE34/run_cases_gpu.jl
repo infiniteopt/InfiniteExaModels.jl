@@ -94,20 +94,17 @@ function run_cases(im_func, kwarg_dict_list; prerun = true, backend = nothing)
     end
 end
 
-backend = CUDABackend()
-
 # Run the opf study
 num_supports_list = [1000, 2000, 4000, 8000, 16000]
 settings = [Dict(:num_supports => n) for n in num_supports_list]
-run_cases(opf, settings, backend = backend)
+run_cases(opf, settings, backend = CUDABackend())
 
 # Run the quadcopter study
 num_supports_list = [1000, 2000, 4000, 8000, 16000]
 settings = [Dict(:num_supports => n) for n in num_supports_list]
-run_cases(quad, settings, backend = backend, prerun = false)
+run_cases(quad, settings, backend = CUDABackend())
 
 # Run the pandemic study
 num_supports_list = [(25, 4), (50, 4), (100, 4), (100, 8), (100, 128)]
-num_supports_list = [(25, 4)]
 settings = [Dict(:num_supports => nt, :num_scenarios => nxi) for (nt, nxi) in num_supports_list]
-run_cases(pandemic, settings, backend = backend)
+run_cases(pandemic, settings, backend = CUDABackend())

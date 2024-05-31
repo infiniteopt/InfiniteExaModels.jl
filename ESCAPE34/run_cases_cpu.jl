@@ -1,4 +1,4 @@
-using Ipopt, AmplNLWriter, NLPModelsIpopt, ExaModels, DelimitedFiles, Ipopt_jll
+using Ipopt, AmplNLWriter, NLPModelsIpopt, ExaModels, DelimitedFiles, Ipopt_jll, HSL_jll
 include("quadrotor.jl")
 include("opf.jl")
 include("pandemic.jl")

@@ -1,11 +1,42 @@
 using InfiniteExaModels
 using InfiniteOpt, Distributions, Random
-using ExaModelsExamples
+using PowerModels
+using Downloads
 using LinearAlgebra
+
+function get_power_case(filename)
+    if !isfile(filename)
+        if !isdir("$(@__DIR__)/temp")
+            mkdir("$(@__DIR__)/temp")
+        end
+        ff = joinpath(@__DIR__, "temp", filename)
+        if !isfile(ff)
+            @info "Downloading $filename"
+            Downloads.download(
+                "https://raw.githubusercontent.com/power-grid-lib/pglib-opf/dc6be4b2f85ca0e776952ec22cbd4c22396ea5a3/$filename",
+                joinpath(@__DIR__, "temp", filename),
+            )
+            return joinpath(@__DIR__, "temp", filename)
+        else
+            return ff
+        end
+    else
+        return filename
+    end
+end
+
+function get_power_data_ref(filename)
+    case = get_power_case(filename)
+    data = PowerModels.parse_file(case)
+    PowerModels.standardize_cost_terms!(data, order = 2)
+    PowerModels.calc_thermal_limits!(data)
+    return PowerModels.build_ref(data)[:it][:pm][:nw][0]
+end
 
 function opf(filename = "pglib_opf_case3_lmbd.m"; seed = 0, num_supports = 100, opt = nothing)
     
-    ref = ExaModelsExamples.get_power_data_ref(filename)
+    ref = get_power_data_ref(filename)
+    
     
     Random.seed!(seed)
     
@@ -20,8 +51,8 @@ function opf(filename = "pglib_opf_case3_lmbd.m"; seed = 0, num_supports = 100, 
     
     branch = [
     begin
-        g,b = ExaModelsExamples.PowerModels.calc_branch_y(branch)
-        tr,ti = ExaModelsExamples.PowerModels.calc_branch_t(branch)
+        g,b = PowerModels.calc_branch_y(branch)
+        tr,ti = PowerModels.calc_branch_t(branch)
         f_bus = branch["f_bus"]
         t_bus = branch["t_bus"]
         (

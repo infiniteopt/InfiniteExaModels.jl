@@ -1,0 +1,94 @@
+
+******************************************************************************
+This program contains Ipopt, a library for large-scale nonlinear optimization.
+ Ipopt is released as open source code under the Eclipse Public License (EPL).
+         For more information visit https://github.com/coin-or/Ipopt
+******************************************************************************
+
+This is Ipopt version 3.14.14, running with linear solver MUMPS 5.6.2.
+
+Number of nonzeros in equality constraint Jacobian...:  2399894
+Number of nonzeros in inequality constraint Jacobian.:        0
+Number of nonzeros in Lagrangian Hessian.............:   639980
+
+Total number of variables............................:   703978
+                     variables with only lower bounds:        0
+                variables with lower and upper bounds:        0
+                     variables with only upper bounds:        0
+Total number of equality constraints.................:   639978
+Total number of inequality constraints...............:        0
+        inequality constraints with only lower bounds:        0
+   inequality constraints with lower and upper bounds:        0
+        inequality constraints with only upper bounds:        0
+
+iter    objective    inf_pr   inf_du lg(mu)  ||d||  lg(rg) alpha_du alpha_pr  ls
+   0  2.3000000e+02 9.80e+00 7.50e-03  -1.0 0.00e+00    -  0.00e+00 0.00e+00   0
+   1  7.1866785e+02 1.78e-15 4.25e+01  -1.0 1.02e+01    -  1.00e+00 1.00e+00h  1
+   2  7.1762411e+02 5.02e-07 2.38e-02  -1.0 6.89e-03   0.0 1.00e+00 1.00e+00f  1
+   3  5.6871478e+02 4.98e-02 3.46e-03  -3.8 1.99e+00    -  1.00e+00 1.00e+00f  1
+   4  5.6875641e+02 5.90e-03 4.89e-05  -3.8 3.70e-01    -  1.00e+00 1.00e+00h  1
+   5  5.6875699e+02 3.95e-07 1.30e-08  -3.8 6.33e-03    -  1.00e+00 1.00e+00h  1
+   6  5.6875699e+02 3.40e-13 3.68e-15  -8.6 2.17e-06    -  1.00e+00 1.00e+00h  1
+
+Number of Iterations....: 6
+
+                                   (scaled)                 (unscaled)
+Objective...............:   5.6875699053301219e+02    5.6875699053301219e+02
+Dual infeasibility......:   3.6758248354862300e-15    3.6758248354862300e-15
+Constraint violation....:   3.3967273438406664e-13    3.3967273438406664e-13
+Variable bound violation:   0.0000000000000000e+00    0.0000000000000000e+00
+Complementarity.........:   0.0000000000000000e+00    0.0000000000000000e+00
+Overall NLP error.......:   3.3967273438406664e-13    3.3967273438406664e-13
+
+
+Number of objective function evaluations             = 7
+Number of objective gradient evaluations             = 7
+Number of equality constraint evaluations            = 7
+Number of inequality constraint evaluations          = 0
+Number of equality constraint Jacobian evaluations   = 7
+Number of inequality constraint Jacobian evaluations = 0
+Number of Lagrangian Hessian evaluations             = 6
+Total seconds in IPOPT (w/o function evaluations)    =     21.426
+Total seconds in NLP function evaluations            =      4.997
+
+
+Timing Statistics:
+
+OverallAlgorithm....................:     44.908 (sys:     25.878 wall:     26.423)
+ PrintProblemStatistics.............:      0.058 (sys:      0.023 wall:      0.007)
+ InitializeIterates.................:      3.614 (sys:      0.473 wall:      4.088)
+ UpdateHessian......................:      8.332 (sys:      5.532 wall:      3.220)
+ OutputIteration....................:      0.002 (sys:      0.001 wall:      0.001)
+ UpdateBarrierParameter.............:      0.000 (sys:      0.000 wall:      0.000)
+ ComputeSearchDirection.............:     22.493 (sys:     10.520 wall:     17.272)
+ ComputeAcceptableTrialPoint........:      6.885 (sys:      6.353 wall:      1.031)
+ AcceptTrialPoint...................:      0.001 (sys:      0.000 wall:      0.000)
+ CheckConvergence...................:      3.521 (sys:      2.974 wall:      0.803)
+PDSystemSolverTotal.................:     22.486 (sys:     10.517 wall:     17.265)
+ PDSystemSolverSolveOnce............:     19.698 (sys:      7.868 wall:     16.868)
+ ComputeResiduals...................:      2.080 (sys:      1.915 wall:      0.303)
+ StdAugSystemSolverMultiSolve.......:     22.405 (sys:      8.178 wall:     20.037)
+ LinearSystemScaling................:      0.000 (sys:      0.000 wall:      0.000)
+ LinearSystemSymbolicFactorization..:      1.481 (sys:      0.132 wall:      1.614)
+ LinearSystemFactorization..........:      0.000 (sys:      0.000 wall:      0.000)
+ LinearSystemBackSolve..............:      9.005 (sys:      5.460 wall:      4.296)
+ LinearSystemStructureConverter.....:      0.000 (sys:      0.000 wall:      0.000)
+  LinearSystemStructureConverterInit:      0.000 (sys:      0.000 wall:      0.000)
+QualityFunctionSearch...............:      0.000 (sys:      0.000 wall:      0.000)
+TryCorrector........................:      0.000 (sys:      0.000 wall:      0.000)
+Task1...............................:      0.000 (sys:      0.000 wall:      0.000)
+Task2...............................:      0.000 (sys:      0.000 wall:      0.000)
+Task3...............................:      0.000 (sys:      0.000 wall:      0.000)
+Task4...............................:      0.000 (sys:      0.000 wall:      0.000)
+Task5...............................:      0.000 (sys:      0.000 wall:      0.000)
+Task6...............................:      0.000 (sys:      0.000 wall:      0.000)
+Function Evaluations................:     17.834 (sys:     14.072 wall:      4.997)
+ Objective function.................:      0.651 (sys:      0.430 wall:      0.128)
+ Objective function gradient........:      0.435 (sys:      0.298 wall:      0.139)
+ Equality constraints...............:      6.819 (sys:      6.730 wall:      0.993)
+ Inequality constraints.............:      0.000 (sys:      0.000 wall:      0.000)
+ Equality constraint Jacobian.......:      1.598 (sys:      1.083 wall:      0.518)
+ Inequality constraint Jacobian.....:      0.000 (sys:      0.000 wall:      0.000)
+ Lagrangian Hessian.................:      8.330 (sys:      5.531 wall:      3.220)
+
+EXIT: Optimal Solution Found.

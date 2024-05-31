@@ -5,7 +5,7 @@ include("pandemic.jl")
 include("utils.jl")
 
 function transopt_ipopt_test(im, filename)
-    set_optimizer_attribute(im, "linear_solver", "ma27")
+    # set_optimizer_attribute(im, "linear_solver", "ma27")
     set_optimizer_attribute(im, "print_timing_statistics", "yes")
     set_optimizer_attribute(im, "output_file", joinpath(@__DIR__, "logs","$(filename)_ipopt.log"))
     total_time = @elapsed optimize!(im)
@@ -19,7 +19,7 @@ function infexa_ipopt_test(im, filename)
     total_time = @elapsed begin 
         em, _ = exa_model(im)
         result = ipopt(em;
-                linear_solver="ma27",
+                # linear_solver="ma27",
                 print_timing_statistics = "yes",
                 output_file = joinpath(@__DIR__, "logs","$(filename)_ipopt.log")
             )

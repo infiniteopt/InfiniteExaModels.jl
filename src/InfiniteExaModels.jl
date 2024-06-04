@@ -145,7 +145,7 @@ function _add_infinite_variables(
         # add extra derivatives if needed
         if var isa InfiniteOpt.Derivative
             # check whether vref type is supported
-            if var.variable_Ref.index_type in (InfiniteOpt.MeasureIndex, InfiniteOpt.ParameterFunctionIndex)
+            if var.variable_ref.index_type in (InfiniteOpt.MeasureIndex, InfiniteOpt.ParameterFunctionIndex)
                 error("Derivatives of measures and/or parameter functions are not " * 
                     "currently supported by InfiniteExaModels.")
             end
@@ -504,8 +504,8 @@ function _get_constr_bounds(set)
 end
 
 # Helper function to augment an expression function and iterator to incorporate parameter functions
-# NOTE: _make_expr_ast must be called on `expr` before this is called
 function _add_parameter_functions_to_itr(expr, itr, data)
+    # extract all the parameter functions in the expression
     vrefs = InfiniteOpt._all_function_variables(expr)
     filter!(vrefs) do v
         if v.index_type == InfiniteOpt.ParameterFunctionIndex
@@ -516,6 +516,8 @@ function _add_parameter_functions_to_itr(expr, itr, data)
             return false
         end
     end
+    # need to sort the order to make sure the type signature for the ExaModel does not change
+    sort!(vrefs, by = v -> v.raw_index)
     # TODO figure out how to only update the iterator once
     for pfref in vrefs
         group_idxs = InfiniteOpt._object_numbers(pfref)

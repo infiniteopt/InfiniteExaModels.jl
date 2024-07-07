@@ -8,8 +8,10 @@ ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
 InfiniteOpt = "20393b10-9daf-11e9-18c9-8db751c92c57"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
 MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
+SolverCore = "ff4d7338-4cf1-434d-91df-b86cb86fb843"
 
 [compat]
 ExaModels = "0.7"
 JuMP = "1.15"
-MathOptInterface = "1.20"
+MathOptInterface = "1.19"
+SolverCore = "0.3"

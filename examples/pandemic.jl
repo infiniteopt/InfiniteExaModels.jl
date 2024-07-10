@@ -12,7 +12,7 @@ dmethod = OrthogonalCollocation(3)
 # dmethod = FiniteDifference(Backward())
 
 # Create the infinite model
-im = InfiniteModel(Ipopt.Optimizer)
+im = InfiniteModel(ExaTranscriptionBackend(IpoptSolver))
 set_silent(im)
 @infinite_parameter(im, t ∈ [0, 200], num_supports = 101, derivative_method = dmethod)
 @infinite_parameter(im, ξ ~ Uniform(0.1, 0.6), num_supports = 4)
@@ -34,14 +34,5 @@ add_supports(t, extra_ts)
 @constraint(im, imax_constr, i ≤ 0.02)
 constant_over_collocation(u, t) # needed for collocation
 
-# Create the ExaModel and solve both models to compare
-@time em, mappings = exa_model(im)
+# Solve
 optimize!(im)
-result = ipopt(em, print_level = 0)
-
-# Print a report
-println("\n--------------------------------------------")
-println("               SUMMARY")
-println("--------------------------------------------\n")
-println("ExaModel Objective:      ", result.objective)
-println("InfiniteModel Objective: ", objective_value(im))

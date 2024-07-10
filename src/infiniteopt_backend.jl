@@ -1,0 +1,420 @@
+"""
+
+"""
+struct ExaMappingData
+    # Mappings
+    infvar_mappings::Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Variable}
+    finvar_mappings::Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Var}
+    constraint_mappings::Dict{InfiniteOpt.InfOptConstraintRef, ExaModels.Constraint}
+
+    # Helpful metadata
+    param_alias::Dict{InfiniteOpt.GeneralVariableRef, Symbol}
+    group_alias::Vector{Symbol}
+    base_itrs::Vector{Any}
+    support_labels::Vector{Vector{Set{DataType}}}
+    support_to_index::Dict{Tuple{Int, Union{Float64, Vector{Float64}}}, Int}
+    semivar_info::Dict{InfiniteOpt.GeneralVariableRef, Tuple{ExaModels.Variable, Vector{Any}}}
+    pfunc_info::Dict{InfiniteOpt.GeneralVariableRef, Tuple{Symbol, <:Array}}
+    
+    # Default constructor
+    function ExaMappingData()
+        return new(
+            Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Variable}(),
+            Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Var}(),
+            Dict{InfiniteOpt.InfOptConstraintRef, ExaModels.Constraint}(),
+            Dict{InfiniteOpt.GeneralVariableRef, Symbol}(),
+            Symbol[],
+            [],
+            Vector{Set{DataType}}[],
+            Dict{Tuple{Int, Union{Float64, Vector{Float64}}}, Int}(),
+            Dict{InfiniteOpt.GeneralVariableRef, Tuple{ExaModels.Variable, Vector{Any}}}(),
+            Dict{InfiniteOpt.GeneralVariableRef, Tuple{Symbol, <:Array}}(),
+        )
+    end
+end
+
+# Store default options that differ from standard JSO defaults
+const _DefaultOptions = Dict{Symbol, Any}(:verbose => 1)
+
+"""
+
+"""
+mutable struct ExaTranscriptionBackend{B} <: InfiniteOpt.AbstractTransformationBackend
+    model::Union{Nothing, ExaModels.ExaModel}
+    backend::B
+    solver::Any
+    options::Dict{Symbol, Any}
+    results::Union{Nothing, SolverCore.AbstractExecutionStats}
+    solve_time::Float64
+    data::ExaMappingData
+end
+
+"""
+
+"""
+function ExaTranscriptionBackend(; backend = nothing)
+    return ExaTranscriptionBackend(
+        nothing,
+        backend,
+        nothing,
+        copy(_DefaultOptions),
+        nothing,
+        NaN,
+        ExaMappingData()
+        )
+end
+function ExaTranscriptionBackend(
+    solver_type::Union{Type{<:SolverCore.AbstractOptimizationSolver}, _MOI.OptimizerWithAttributes};
+    kwargs...
+    )
+    backend = ExaTranscriptionBackend(; kwargs...)
+    JuMP.set_optimizer(backend, solver_type)
+    return backend
+end
+function ExaTranscriptionBackend(solver_type; kwargs...)
+    error("`ExaTranscriptionBackend`s only support solver constructors of type " *
+          " `SolverCore.AbstractOptimizationSolver` (e.g., `NLPModelsIpopt.IpoptSolver`).")
+end
+
+# Extend Base.empty!
+function Base.empty!(backend::ExaTranscriptionBackend)
+    backend.model = nothing
+    backend.solver = nothing
+    backend.results = nothing
+    backend.solve_time = NaN
+    backend.data = ExaMappingData()
+    return backend
+end
+
+# Basic InfiniteOpt transformation backend extensions
+InfiniteOpt.transformation_model(backend::ExaTranscriptionBackend) = backend.model
+InfiniteOpt.transformation_data(backend::ExaTranscriptionBackend) = backend.data
+
+# Build out the backend
+function InfiniteOpt.build_transformation_backend!(
+    model::InfiniteOpt.InfiniteModel,
+    backend::ExaTranscriptionBackend
+    ) # TODO maybe add kwargs
+    empty!(backend)
+    backend.model = ExaModels.ExaModel(model, backend.data; backend = backend.backend)
+    return
+end
+
+## Solver settings
+# Symbol
+function JuMP.get_attribute(backend::ExaTranscriptionBackend, attr::Symbol)
+    haskey(backend.options, attr) || error("Attribute `$attr` not found.")
+    return backend.options[attr]
+end
+function JuMP.set_attribute(backend::ExaTranscriptionBackend, attr::Symbol, value)
+    backend.solver = nothing # ensures that the solver will be rebuilt with the new setting
+    backend.results = nothing
+    backend.solve_time = NaN
+    return backend.options[attr] = value
+end
+
+# MOI.RawOptimizerAttribute
+function JuMP.get_attribute(
+    backend::ExaTranscriptionBackend,
+    attr::_MOI.RawOptimizerAttribute
+    )
+    return JuMP.get_attribute(backend, Symbol(attr.name))
+end
+function JuMP.set_attribute(
+    backend::ExaTranscriptionBackend,
+    attr::_MOI.RawOptimizerAttribute,
+    value
+    )
+    return JuMP.set_attribute(backend, Symbol(attr.name), value)
+end
+
+# MOI.Silent
+function JuMP.get_attribute(
+    backend::ExaTranscriptionBackend,
+    ::_MOI.Silent
+    )
+    return JuMP.get_attribute(backend, :verbose) == 0
+end
+function JuMP.set_attribute(
+    backend::ExaTranscriptionBackend,
+    ::_MOI.Silent,
+    value::Bool
+    )
+    return JuMP.set_attribute(backend, :verbose, Int(!value))
+end
+
+# MOI.TimeLimitSec
+function JuMP.get_attribute(
+    backend::ExaTranscriptionBackend,
+    ::_MOI.TimeLimitSec
+    )
+    return JuMP.get_attribute(backend, :max_time)
+end
+function JuMP.set_attribute(
+    backend::ExaTranscriptionBackend,
+    ::_MOI.TimeLimitSec,
+    value::Real
+    )
+    return JuMP.set_attribute(backend, :max_time, Float64(value))
+end
+function JuMP.set_attribute(
+    backend::ExaTranscriptionBackend,
+    ::_MOI.TimeLimitSec,
+    ::Nothing
+    )
+    return JuMP.set_attribute(backend, :max_time, _DefaultOptions[:max_time])
+end
+
+# MOI.SolverName
+function JuMP.get_attribute(backend::ExaTranscriptionBackend, ::_MOI.SolverName)
+    return string(get(backend.options, :solver, "No solver attached"))
+end
+
+# Optimizer specification
+function JuMP.set_optimizer(
+    backend::ExaTranscriptionBackend,
+    solver_type
+    )
+    # clear out all previous solver specific settings and set the solver
+    merge!(empty!(backend.options), _DefaultOptions)
+    JuMP.set_attribute(backend, :solver, solver_type)
+    return
+end
+function JuMP.set_optimizer(
+    backend::ExaTranscriptionBackend,
+    solver_type::_MOI.OptimizerWithAttributes
+    )
+    JuMP.set_optimizer(backend, solver_type.optimizer_constructor)
+    for (attr, value) in solver_type.params
+        JuMP.set_attribute(backend, attr, value)
+    end
+    return
+end
+
+# Fallback for translating the default option nomenclature to the solver
+function translate_option(p::Pair, solver_type)
+    return p
+end
+
+# Extend Optimize!
+function JuMP.optimize!(backend::ExaTranscriptionBackend)
+    haskey(backend.options, :solver) || throw(JuMP.NoOptimizer())
+    solver_type = backend.options[:solver]
+    options = (translate_option(p, solver_type) 
+                for p in backend.options if p[1] != :solver)
+    if isnothing(backend.solver)
+        backend.solver = solver_type(backend.model)
+    else
+        SolverCore.reset!(backend.solver, backend.model)
+    end
+    backend.solve_time = @elapsed begin 
+        backend.results = SolverCore.solve!(backend.solver, backend.model; options...)
+    end
+    return backend.results
+end
+
+# Check whether a mapping exists
+function _check_mapping(vref::InfiniteOpt.GeneralVariableRef, backend)
+    data = backend.data
+    if !haskey(data.infvar_mappings, vref) && !haskey(data.finvar_mappings, vref)
+        error("A mapping for `$vref` in the transformation backend not found.")
+    end
+    return
+end
+function _check_mapping(cref::InfiniteOpt.InfOptConstraintRef, backend)
+    if !haskey(backend.data.constraint_mappings, cref)
+        error("A mapping for `$cref` in the transformation backend not found.")
+    end
+    return
+end
+
+# InfiniteOpt object mapping methods
+function InfiniteOpt.transformation_variable(
+    vref::InfiniteOpt.GeneralVariableRef,
+    backend::ExaTranscriptionBackend
+    ) # TODO add keywords (e.g., label)
+    _check_mapping(vref, backend)
+    data = backend.data
+    haskey(data.infvar_mappings, vref) && return data.infvar_mappings[vref]
+    return data.finvar_mappings[vref]
+end
+# TODO find a way to support expressions
+function InfiniteOpt.transformation_constraint(
+    cref::InfiniteOpt.InfOptConstraintRef,
+    backend::ExaTranscriptionBackend
+    ) # TODO add keywords (e.g., label)
+    _check_mapping(cref, backend)
+    return backend.data.constraint_mappings[cref]
+end
+
+# Extract the supports for a given variable/constraint reference
+function _get_supports(ref, pref_vt, backend)
+    group_idxs = InfiniteOpt.parameter_group_int_indices(ref)
+    itrs = map(i -> backend.data.base_itrs[i], group_idxs)
+    dims = length.(itrs)
+    SuppType = typeof(Tuple(zeros(length(pref_vt)), pref_vt))
+    supps = Array{SuppType, length(dims)}(undef, dims...)
+    for i in Iterators.product(itrs...)
+        supp = [s for nt in i for s in Iterators.drop(values(nt), 1)]
+        supps[first.(i)...] = Tuple(supp, pref_vt)
+    end
+    return supps
+end
+
+# InfiniteOpt support mapping methods
+function InfiniteOpt.variable_supports(
+    vref::Union{
+        InfiniteOpt.InfiniteVariableRef,
+        InfiniteOpt.SemiInfiniteVariableRef, 
+        InfiniteOpt.DerivativeRef,
+        InfiniteOpt.ParameterFunctionRef,
+        InfiniteOpt.MeasureRef
+        },
+    backend::ExaTranscriptionBackend
+    ) # TODO add keywords (e.g., label)
+    pref_vt = InfiniteOpt.raw_parameter_refs(vref)
+    return _get_supports(vref, pref_vt, backend)
+end
+# TODO find a way to support expressions
+function InfiniteOpt.constraint_supports(
+    cref::InfiniteOpt.InfOptConstraintRef,
+    backend::ExaTranscriptionBackend
+    ) # TODO add keywords (e.g., label)
+    prefs = InfiniteOpt.parameter_refs(cref)
+    pref_vt = InfiniteOpt.Collections.VectorTuple(prefs)
+    return _get_supports(cref, pref_vt, backend)
+end
+
+# Check that a result is available
+function _check_results_available(backend)
+    if isnothing(backend.results)
+        error("No solution available to query.")
+    end
+    return
+end
+
+# Standard JSO statuses to MOI.TerminationStatusCode
+const _TerminationMappings = Dict{Symbol, _MOI.TerminationStatusCode}(
+    :first_order => _MOI.LOCALLY_SOLVED,
+    :acceptable => _MOI.ALMOST_LOCALLY_SOLVED,
+    :small_step => _MOI.SLOW_PROGRESS,
+    :infeasible => _MOI.INFEASIBLE_OR_UNBOUNDED,
+    :unbounded => _MOI.INFEASIBLE_OR_UNBOUNDED,
+    :max_iter => _MOI.ITERATION_LIMIT,
+    :max_time => _MOI.TIME_LIMIT,
+    :user => _MOI.INTERRUPTED,
+    :exception => _MOI.OTHER_ERROR,
+    :stalled => _MOI.OTHER_ERROR,
+    :max_eval => _MOI.OTHER_LIMIT,
+    :neg_pred => _MOI.OTHER_ERROR,
+    :not_desc => _MOI.OTHER_ERROR,
+)
+
+# Standard JSO statuses to MOI.ResultStatusCode
+const _ResultMappings = Dict{Symbol, _MOI.ResultStatusCode}(
+    :first_order => _MOI.FEASIBLE_POINT,
+    :acceptable => _MOI.NEARLY_FEASIBLE_POINT,
+    :infeasible => _MOI.INFEASIBLE_POINT,
+)
+
+# Default translation with standard JSO codes
+function translate_termination_status(solver, status)
+    return get(_TerminationMappings, status, _MOI.OTHER_ERROR)
+end
+
+# Default translation with standard JSO codes
+function translate_result_status(solver, status)
+    return get(_ResultMappings, status, _MOI.UNKNOWN_RESULT_STATUS)
+end
+
+## Result queries
+# MOI.ResultCount
+function JuMP.get_attribute(
+    backend::ExaTranscriptionBackend,
+    ::_MOI.ResultCount
+    )
+    return isnothing(backend.results) ? 0 : 1
+end
+
+# MOI.RawStatusString
+function JuMP.get_attribute(
+    backend::ExaTranscriptionBackend,
+    ::_MOI.RawStatusString
+    )
+    isnothing(backend.results) && return "optimize not called"
+    return string(backend.results.status)
+end
+
+# MOI.TerminationStatus
+function JuMP.get_attribute(
+    backend::ExaTranscriptionBackend,
+    ::_MOI.TerminationStatus
+    )
+    isnothing(backend.results) && return _MOI.OPTIMIZE_NOT_CALLED
+    return translate_termination_status(backend.solver, backend.results.status)
+end
+
+# MOI.PrimalStatus/MOI.DualStatus
+function JuMP.get_attribute(
+    backend::ExaTranscriptionBackend,
+    ::Union{_MOI.PrimalStatus, _MOI.DualStatus}
+    )
+    isnothing(backend.results) && return _MOI.NO_SOLUTION
+    return translate_result_status(backend.solver, backend.results.status)
+end
+
+# MOI.SolveTimeSec
+function JuMP.get_attribute(
+    backend::ExaTranscriptionBackend,
+    ::_MOI.SolveTimeSec
+    )
+    _check_results_available(backend)
+    return backend.solve_time
+end
+
+# MOI.ObjectiveValue
+function JuMP.get_attribute(
+    backend::ExaTranscriptionBackend,
+    ::_MOI.ObjectiveValue
+    )
+    _check_results_available(backend)
+    return backend.results.objective
+end
+
+# map_value
+function InfiniteOpt.map_value(
+    vref::InfiniteOpt.GeneralVariableRef,
+    backend::ExaTranscriptionBackend
+    ) # TODO add keywords (e.g., label)
+    _check_results_available(backend)
+    var = InfiniteOpt.transformation_variable(vref, backend)
+    return ExaModels.solution(backend.results, var)
+end
+
+# TODO find a way to support expressions/constraints
+
+# Process variable bounds to give the right dual value
+_get_domain_dual(mL, mU, ::_MOI.LessThan) = min.(mL .- mU, 0.0)
+_get_domain_dual(mL, mU, ::_MOI.GreaterThan) = max.(mL .- mU, 0.0)
+_get_domain_dual(mL, mU, ::_MOI.EqualTo) = mL .- mU
+
+# map_dual
+function InfiniteOpt.map_dual(
+    cref::InfiniteOpt.InfOptConstraintRef,
+    backend::ExaTranscriptionBackend
+    ) # TODO add keywords (e.g., label)
+    _check_results_available(backend)
+    if InfiniteOpt.is_variable_domain_constraint(cref)
+        con = JuMP.constraint_object(cref)
+        var = InfiniteOpt.transformation_variable(JuMP.jump_function(con))
+        set = JuMP.moi_set(con)
+        mL = ExaModels.multipliers_L(backend.results, var) 
+        mU = ExaModels.multipliers_U(backend.results, var)
+        return _get_domain_dual(mL, mU, set)
+    else
+        con = InfiniteOpt.transformation_constraint(cref, backend)
+        return -1.0 * ExaModels.multipliers(backend.results, con)
+    end
+end
+
+# TODO add map_shadow_price, map_optimizer_index, map_reduced_cost

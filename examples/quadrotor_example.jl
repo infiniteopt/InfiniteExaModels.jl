@@ -15,7 +15,7 @@ function main()
     # dmethod = FiniteDifference(Backward())
     
     # Define the InfiniteModel
-    im = InfiniteModel(Ipopt.Optimizer)
+    im = InfiniteModel(ExaTranscriptionBackend(IpoptSolver))
 
     @infinite_parameter(im, t in [0, T], num_supports = N, derivative_method = dmethod)
     
@@ -78,24 +78,10 @@ function main()
             u[2] * cos(x[7]) * tan(x[8]) + u[3] * sin(x[7]) * tan(x[8]) + u[4]
     )
 
-    # Create the ExaModel and solve both models to compare
-    @time em, mappings = exa_model(im)
+    # Solve
     set_optimizer_attribute(im, "linear_solver", "ma27")
     set_optimizer_attribute(im, "print_timing_statistics", "yes")
     optimize!(im)
-    ipopt(em; print_level = 0, linear_solver="ma27")
-    result = ipopt(
-        em;
-        linear_solver="ma27",
-        print_timing_statistics = "yes",
-    )
-
-    # Print a report
-    println("\n--------------------------------------------")
-    println("               SUMMARY")
-    println("--------------------------------------------\n")
-    println("ExaModel Objective:      ", result.objective)
-    println("InfiniteModel Objective: ", objective_value(im))
 
 end
 

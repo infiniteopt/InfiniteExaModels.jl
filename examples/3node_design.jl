@@ -12,7 +12,7 @@ c_max = 5
 U = 10000
 
 # Define the infinite model
-im = InfiniteModel(Ipopt.Optimizer)
+im = InfiniteModel(ExaTranscriptionBackend(IpoptSolver))
 set_silent(im)
 @infinite_parameter(im, θ[i = 1:n_θ] ~ MvNormal(θ_nom, covar), num_supports = 1000)
 @variable(im, 0 <= y <= 1, Infinite(θ))
@@ -30,20 +30,5 @@ set_silent(im)
 @constraint(im, h3, z[2] - θ[3] == 0)
 @constraint(im, max_cost, sum(c[i] * d[i] for i = 1:n_d) <= c_max)
 
-# Create the ExaModel and solve both models to compare
-@time em, mappings = exa_model(im)
+# Solve
 optimize!(im)
-result = ipopt(em, print_level = 0)
-
-# Get the answers
-ed = [result.solution[mappings.finvar_mappings[v].i] for v in d]
-id = value.(d)
-
-# Print a report
-println("\n--------------------------------------------")
-println("               SUMMARY")
-println("--------------------------------------------\n")
-println("ExaModel Objective:      ", -result.objective) # change sign for maximization
-println("InfiniteModel Objective: ", objective_value(im))
-println("\nExaModel d:      ", ed)
-println("InfiniteModel d: ", id)

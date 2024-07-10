@@ -1,7 +1,7 @@
 # Interfacing InfiniteOpt and ExaModels
-The conversion API is in `InfiniteExaModels.jl` and the principal method is `exa_model` which creates
-an `ExaModel` from an `InfiniteModel`. 
+This provides an efficient bridge between InfiniteOpt and ExaModels. The principal method is `ExaTranscriptionBackend`
+which creates an `AbstractTransformationBackend` for a `InfiniteModel`. 
 
 ## Dependencies
-The necessary packages are provided in `Project.toml`, but note that the compat is a little loose. 
+The necessary packages are provided in `Project.toml`. 
 Currently, the `master` branch of InfiniteOpt is required.

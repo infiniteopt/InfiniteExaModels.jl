@@ -1,14 +1,14 @@
 using InfiniteExaModels
 using InfiniteOpt
 
-function quad(; num_supports = 100, opt = nothing)
+function quad(; num_supports = 100, backend = nothing)
     # Data
     n = 9
     p = 4
     T = 60
     
     # Define the InfiniteModel
-    im = InfiniteModel(opt)
+    im = InfiniteModel(backend)
 
     @infinite_parameter(im, t in [0, T], num_supports = num_supports, 
                         derivative_method = OrthogonalCollocation(3))

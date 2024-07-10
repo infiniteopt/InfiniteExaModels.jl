@@ -92,7 +92,7 @@ function quad(; num_supports = 100)
     optimize!(im)
 
     
-    @time em, mappings = exa_model(im)
+    @time em = ExaModel(im)
     ipopt(
         em;
         linear_solver="ma27",

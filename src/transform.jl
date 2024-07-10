@@ -1,28 +1,12 @@
-# Generate infinite parameter references based on basic indices
-function _parameter_ref(
-    model::InfiniteOpt.InfiniteModel,
-    idx::InfiniteOpt.IndependentParameterIndex
-    )
-    return InfiniteOpt.GeneralVariableRef(model, idx.value, InfiniteOpt.IndependentParameterIndex)
-end
-function _parameter_ref(
-    model::InfiniteOpt.InfiniteModel,
-    idx::InfiniteOpt.DependentParametersIndex
-    )
-    num_params = length(model.dependent_params[idx].parameter_nums)
-    return [InfiniteOpt.GeneralVariableRef(model, idx.value, InfiniteOpt.DependentParameterIndex, i) for i in 1:num_params]
-end
-
 # Create the support iterators for each infinite parameter group and add to the mapping data
 function _build_base_iterators(
     data::ExaMappingData,
     inf_model::InfiniteOpt.InfiniteModel
     )
     # gather the individual infinite parameter groups
-    param_group_indices = InfiniteOpt.parameter_group_indices(inf_model)
-    param_groups = map(idx -> _parameter_ref(inf_model, idx), param_group_indices)
-    # build the iterator for each parameter group
-    for group in param_groups # group will either be singular ref or a vector of refs
+    prefs = InfiniteOpt.parameter_refs(inf_model)
+    # build the iterator for each group of infinite parameters
+    for group in prefs # group will either be singular ref or a vector of refs
         # generate all the symbols for created named tuples
         for pref in group
             data.param_alias[pref] = if group isa Vector
@@ -36,7 +20,9 @@ function _build_base_iterators(
         push!(data.group_alias, itr_sym)
         # setup the supports (discretization points)
         InfiniteOpt.add_generative_supports(first(group))
-        supps = keys(InfiniteOpt._parameter_supports(InfiniteOpt.dispatch_variable_ref(first(group))))
+        supp_dict = InfiniteOpt.core_object(first(group)).supports
+        supps = keys(supp_dict)
+        labels = [supp_dict[s] for s in supps]
         group_idx = length(data.group_alias)
         for (i, s) in enumerate(supps)
             data.support_to_index[group_idx, s] = i
@@ -45,6 +31,7 @@ function _build_base_iterators(
         itr = [(; itr_sym => i, zip(aliases, s)...) for (i, s) in enumerate(supps)]
         # add the iterator to `data`
         push!(data.base_itrs, itr)
+        push!(data.support_labels, labels)
     end
     return
 end
@@ -102,7 +89,7 @@ function _add_infinite_variables(
             error("Integer variables are not supported by ExaModels.")
         end
         # retrieve the basic info
-        var = InfiniteOpt._core_variable_object(vref)
+        var = InfiniteOpt.core_object(vref)
         group_idxs = InfiniteOpt.parameter_group_int_indices(vref)
         # add extra derivatives if needed
         if var isa InfiniteOpt.Derivative
@@ -303,7 +290,6 @@ function _map_variable(vref, IdxType, itr_par, data)
 end
 
 # Convert as InfiniteOpt expression into a ExaModel expression using the ParIndexed `itr_par`
-# TODO ensure that this never returns a raw constant at the very end, maybe use ExaModels.Null...
 function _exafy(vref::InfiniteOpt.GeneralVariableRef, itr_par, data)
     return _map_variable(vref, vref.index_type, itr_par, data)
 end
@@ -358,6 +344,10 @@ function _exafy(
     return _nl_op(nl.head)((_exafy(a, itr_par, data) for a in nl.args)...)
 end
 
+# Finalize exafied expressions to avoid scalars
+_finalize_expr(expr) = expr
+_finalize_expr(c::Real) = ExaModels.Null(c)
+
 # Extract the constraint bounds from an MOI set
 function _get_constr_bounds(set::_MOI.LessThan)
     return -Inf, set.upper
@@ -378,7 +368,7 @@ end
 # Helper function to augment an expression function and iterator to incorporate parameter functions
 function _add_parameter_functions_to_itr(expr, itr, data)
     # extract all the parameter functions in the expression
-    vrefs = InfiniteOpt._all_function_variables(expr)
+    vrefs = InfiniteOpt.all_expression_variables(expr)
     filter!(vrefs) do v
         if v.index_type == InfiniteOpt.ParameterFunctionIndex
             return true
@@ -408,7 +398,7 @@ function _add_constraints(
     )
     for cref in JuMP.all_constraints(inf_model)
         # skip if the constraint is a variable bound or type
-        InfiniteOpt._is_info_constraint(cref) && continue
+        InfiniteOpt.is_variable_domain_constraint(cref) && continue
         # parse the basic information
         constr = JuMP.constraint_object(cref)
         if isempty(inf_model.constraints[JuMP.index(cref)].measure_indices)
@@ -438,7 +428,7 @@ function _add_constraints(
         end
         # create the ExaModels expression tree based on expr
         itr_par = ExaModels.Par(typeof(first(itr)))
-        em_expr = _exafy(expr, itr_par, data)
+        em_expr = _finalize_expr(_exafy(expr, itr_par, data))
         # get the constraint bounds
         lb, ub = _get_constr_bounds(set)
         # create the ExaModels constraint
@@ -601,7 +591,8 @@ const _ObjMeasureExpansionWarn = string(
 
 # Write a finite expression `expr` in a single objective term (this is a generic fallback)
 function _add_generic_objective_term(core, expr, data)
-    ExaModels.objective(core, _exafy(expr, (;), data), [(;)])
+    em_expr = _finalize_expr(_exafy(expr, (;), data))
+    ExaModels.objective(core, em_expr, [(;)])
     return
 end
 
@@ -633,7 +624,7 @@ function _process_measure_sum(vref, data, prev_itr = nothing)
     else
         itr = [(i[1]..., i[2]..., c = i[1].c * i[2].c) for i in Iterators.product(curr_itr, prev_itr)]
     end
-    vrefs = InfiniteOpt._all_function_variables(mexpr)
+    vrefs = InfiniteOpt.all_expression_variables(mexpr)
     if all(v.index_type != InfiniteOpt.MeasureIndex for v in vrefs) # single measure without measures inside of it
         return mexpr, itr
     elseif mexpr isa InfiniteOpt.GeneralVariableRef # single nested measure
@@ -662,7 +653,7 @@ function _add_objective_aff_term(core, coef, vref, ::Type{InfiniteOpt.MeasureInd
     itr_par = ExaModels.Par(typeof(first(itr)))
     em_expr = itr_par.c * _exafy(coef * mexpr, itr_par, data)
     # add the term to the objective
-    ExaModels.objective(core, em_expr, itr)
+    ExaModels.objective(core, _finalize_expr(em_expr), itr)
     return
 end
 function _add_objective_aff_term(core, coef, vref, _, data)
@@ -677,7 +668,7 @@ function _add_objective(
     data::ExaMappingData, 
     inf_model::InfiniteOpt.InfiniteModel
     )
-    vrefs = InfiniteOpt._all_function_variables(expr)
+    vrefs = InfiniteOpt.all_expression_variables(expr)
     if any(v.index_type == InfiniteOpt.MeasureIndex for v in vrefs)
         @warn _ObjMeasureExpansionWarn
     end
@@ -706,7 +697,7 @@ function _add_objective(
     end
     c = JuMP.constant(aff)
     if !iszero(c)
-        ExaModels.objective(core, ExaModel.Null(c))
+        ExaModels.objective(core, ExaModels.Null(c))
     end
     return
 end
@@ -753,12 +744,10 @@ function build_exa_core!(
     _add_constraints(core, data, inf_model)
     _add_derivative_approximations(core, data, inf_model)
     _add_collocation_restrictions(core, data, inf_model)
-    # add the objective if we have one
+    # add the objective if there is one
     expr = JuMP.objective_function(inf_model)
     sense = JuMP.objective_sense(inf_model)
-    if sense == _MOI.MAX_SENSE
-        _add_objective(core, -expr, data, inf_model)
-    elseif sense == _MOI.MIN_SENSE
+    if sense != _MOI.FEASIBILITY_SENSE
         _add_objective(core, expr, data, inf_model)
     end
     return
@@ -773,7 +762,8 @@ function ExaModels.ExaModel(
     backend = nothing
     )
     # TODO add support for other float types once InfiniteOpt does
-    core = ExaModels.ExaCore(; backend = backend)
+    minimize = JuMP.objective_sense(inf_model) == _MOI.MIN_SENSE
+    core = ExaModels.ExaCore(; backend = backend, minimize = minimize)
     build_exa_core!(core, data, inf_model)
     return ExaModels.ExaModel(core)
 end

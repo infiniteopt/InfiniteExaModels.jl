@@ -261,7 +261,8 @@ function opf(filename = "pglib_opf_case3_lmbd.m"; seed = 0, num_supports = 100)
         set_optimizer_attribute(im, "output_file", joinpath("logs","opf_jump_$(filename)_$(num_supports)_$(seed).log"))
         optimize!(im)
         
-        @time em, mappings = exa_model(im)
+        mappings = InfiniteExaModels.ExaMappingData()
+        @time em = ExaModel(im, mappings)
         ipopt(
         em;
         linear_solver="ma27",

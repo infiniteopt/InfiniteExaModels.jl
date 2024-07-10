@@ -1,7 +1,7 @@
 using InfiniteExaModels
 using InfiniteOpt, Distributions, Random
 
-function pandemic(; seed = 0, num_supports = 100, num_scenarios = 4, opt = nothing)
+function pandemic(; seed = 0, num_supports = 100, num_scenarios = 4, backend = nothing)
     Random.seed!(seed)
 
     # Set the parameters
@@ -11,7 +11,7 @@ function pandemic(; seed = 0, num_supports = 100, num_scenarios = 4, opt = nothi
     extra_ts = [0.001, 0.002, 0.004, 0.008, 0.02, 0.04, 0.08, 0.2, 0.4, 0.8]
 
     # Create the infinite model
-    im = InfiniteModel(opt)
+    im = InfiniteModel(backend)
     @infinite_parameter(im, t ∈ [0, 200], num_supports = num_supports)
     @infinite_parameter(im, ξ ~ Uniform(0.1, 0.6), num_supports = num_scenarios)
     add_supports(t, extra_ts)

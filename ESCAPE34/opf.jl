@@ -33,7 +33,7 @@ function get_power_data_ref(filename)
     return PowerModels.build_ref(data)[:it][:pm][:nw][0]
 end
 
-function opf(filename = "pglib_opf_case3_lmbd.m"; seed = 0, num_supports = 100, opt = nothing)
+function opf(filename = "pglib_opf_case3_lmbd.m"; seed = 0, num_supports = 100, backend = nothing)
     
     ref = get_power_data_ref(filename)
     
@@ -77,7 +77,7 @@ function opf(filename = "pglib_opf_case3_lmbd.m"; seed = 0, num_supports = 100, 
     for (i, branch) in ref[:branch]]
         
         # Define the infinite model
-        im = InfiniteModel(opt)
+        im = InfiniteModel(backend)
         
         # first stage variables
         @variable(im, va0[i in keys(ref[:bus])])

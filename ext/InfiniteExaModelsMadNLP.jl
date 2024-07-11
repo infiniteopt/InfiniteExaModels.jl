@@ -1,14 +1,40 @@
 module InfiniteExaModelsMadNLP
 
-import InfiniteExaModels, MadNLP
+import InfiniteExaModels, MadNLP, SolverCore
 import MathOptInterface as _MOI
 
-function InfiniteExaModels.translate_option(p::Pair, ::Type{MadNLP.MadNLPSolver})
-    if p[1] == :verbose
-        return :print_level => isone(p[2]) ? 5 : 0
-    else
-        return p
+# Account for the silent and time limit settings
+function _process_options(options, backend)
+    if backend.silent
+        options[:print_level] = MadNLP.ERROR
     end
+    if !isnan(backend.time_limit)
+        options[:max_wall_time] = backend.time_limit
+    end
+    return
+end
+
+# Setup the solver, solve it, and return the results
+function InfiniteExaModels.initial_solve(
+    type::Type{MadNLP.MadNLPSolver},
+    backend,
+    options
+    )
+    _process_options(options, backend)
+    backend.solver = type(backend.model; options...)
+    return SolverCore.solve!(backend.solver)
+end
+
+# Prepare solver for resolve, solve it, and return the results
+function InfiniteExaModels.resolve(
+    solver::MadNLP.MadNLPSolver,
+    backend,
+    options
+    )
+    _process_options(options, backend)
+    # TODO handle removal of silence/time settings
+    # TODO fix this to handle options correctly (might require fix with MadNLP)
+    return SolverCore.solve!(backend.model, solver; options...)
 end
 
 # Standard JSO statuses to MOI.TerminationStatusCode

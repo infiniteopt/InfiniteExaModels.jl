@@ -33,9 +33,6 @@ struct ExaMappingData
     end
 end
 
-# Store default options that differ from standard JSO defaults
-const _DefaultOptions = Dict{Symbol, Any}(:verbose => 1)
-
 """
 
 """
@@ -44,6 +41,8 @@ mutable struct ExaTranscriptionBackend{B} <: InfiniteOpt.AbstractTransformationB
     backend::B
     solver::Any
     options::Dict{Symbol, Any}
+    silent::Bool
+    time_limit::Float64
     results::Union{Nothing, SolverCore.AbstractExecutionStats}
     solve_time::Float64
     data::ExaMappingData
@@ -57,26 +56,21 @@ function ExaTranscriptionBackend(; backend = nothing)
         nothing,
         backend,
         nothing,
-        copy(_DefaultOptions),
+        Dict{Symbol, Any}(),
+        false,
+        NaN,
         nothing,
         NaN,
         ExaMappingData()
         )
 end
-function ExaTranscriptionBackend(
-    solver_type::Union{Type{<:SolverCore.AbstractOptimizationSolver}, _MOI.OptimizerWithAttributes};
-    kwargs...
-    )
+function ExaTranscriptionBackend(solver_type; kwargs...)
     backend = ExaTranscriptionBackend(; kwargs...)
     JuMP.set_optimizer(backend, solver_type)
     return backend
 end
-function ExaTranscriptionBackend(solver_type; kwargs...)
-    error("`ExaTranscriptionBackend`s only support solver constructors of type " *
-          " `SolverCore.AbstractOptimizationSolver` (e.g., `NLPModelsIpopt.IpoptSolver`).")
-end
 
-# Extend Base.empty!
+# Extend Base.empty! (leave the options alone)
 function Base.empty!(backend::ExaTranscriptionBackend)
     backend.model = nothing
     backend.solver = nothing
@@ -107,10 +101,10 @@ function JuMP.get_attribute(backend::ExaTranscriptionBackend, attr::Symbol)
     return backend.options[attr]
 end
 function JuMP.set_attribute(backend::ExaTranscriptionBackend, attr::Symbol, value)
-    backend.solver = nothing # ensures that the solver will be rebuilt with the new setting
     backend.results = nothing
     backend.solve_time = NaN
-    return backend.options[attr] = value
+    backend.options[attr] = value
+    return
 end
 
 # MOI.RawOptimizerAttribute
@@ -133,14 +127,15 @@ function JuMP.get_attribute(
     backend::ExaTranscriptionBackend,
     ::_MOI.Silent
     )
-    return JuMP.get_attribute(backend, :verbose) == 0
+    return backend.silent
 end
 function JuMP.set_attribute(
     backend::ExaTranscriptionBackend,
     ::_MOI.Silent,
     value::Bool
     )
-    return JuMP.set_attribute(backend, :verbose, Int(!value))
+    backend.silent = value
+    return
 end
 
 # MOI.TimeLimitSec
@@ -148,21 +143,24 @@ function JuMP.get_attribute(
     backend::ExaTranscriptionBackend,
     ::_MOI.TimeLimitSec
     )
-    return JuMP.get_attribute(backend, :max_time)
+    limit = backend.time_limit
+    return isnan(limit) ? nothing : limit
 end
 function JuMP.set_attribute(
     backend::ExaTranscriptionBackend,
     ::_MOI.TimeLimitSec,
     value::Real
     )
-    return JuMP.set_attribute(backend, :max_time, Float64(value))
+    backend.time_limit = Float64(value)
+    return
 end
 function JuMP.set_attribute(
     backend::ExaTranscriptionBackend,
     ::_MOI.TimeLimitSec,
     ::Nothing
     )
-    return JuMP.set_attribute(backend, :max_time, _DefaultOptions[:max_time])
+    backend.time_limit = NaN
+    return
 end
 
 # MOI.SolverName
@@ -176,8 +174,9 @@ function JuMP.set_optimizer(
     solver_type
     )
     # clear out all previous solver specific settings and set the solver
-    merge!(empty!(backend.options), _DefaultOptions)
+    empty!(backend.options)
     JuMP.set_attribute(backend, :solver, solver_type)
+    backend.solver = nothing
     return
 end
 function JuMP.set_optimizer(
@@ -191,24 +190,21 @@ function JuMP.set_optimizer(
     return
 end
 
-# Fallback for translating the default option nomenclature to the solver
-function translate_option(p::Pair, solver_type)
-    return p
-end
+# TODO add JSO fallbacks
+function initial_solve end
+function resolve end
 
 # Extend Optimize!
 function JuMP.optimize!(backend::ExaTranscriptionBackend)
     haskey(backend.options, :solver) || throw(JuMP.NoOptimizer())
     solver_type = backend.options[:solver]
-    options = (translate_option(p, solver_type) 
-                for p in backend.options if p[1] != :solver)
-    if isnothing(backend.solver)
-        backend.solver = solver_type(backend.model)
-    else
-        SolverCore.reset!(backend.solver, backend.model)
-    end
-    backend.solve_time = @elapsed begin 
-        backend.results = SolverCore.solve!(backend.solver, backend.model; options...)
+    options = filter(p -> p[1] != :solver, backend.options)
+    backend.solve_time = @elapsed begin
+        backend.results = if isnothing(backend.solver)
+            initial_solve(solver_type, backend, options)
+        else
+            resolve(backend.solver, backend, options)
+        end
     end
     return backend.results
 end

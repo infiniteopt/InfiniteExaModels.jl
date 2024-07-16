@@ -1,5 +1,5 @@
 using InfiniteExaModels
-using InfiniteOpt, NLPModelsIpopt, Ipopt
+using InfiniteOpt, NLPModelsIpopt, Ipopt, MadNLPGPU, CUDA
 
 function main()
 
@@ -15,7 +15,7 @@ function main()
     # dmethod = FiniteDifference(Backward())
     
     # Define the InfiniteModel
-    im = InfiniteModel(ExaTranscriptionBackend(IpoptSolver))
+    im = InfiniteModel(ExaTranscriptionBackend(MadNLPSolver, backend = CUDABackend()))
 
     @infinite_parameter(im, t in [0, T], num_supports = N, derivative_method = dmethod)
     
@@ -79,11 +79,11 @@ function main()
     )
 
     # Solve
-    set_optimizer_attribute(im, "linear_solver", "ma27")
+    # set_optimizer_attribute(im, "linear_solver", "ma27")
     set_optimizer_attribute(im, "print_timing_statistics", "yes")
     optimize!(im)
-
+    return im
 end
 
 
-main()
+im = main()

@@ -12,6 +12,7 @@ struct ExaMappingData
     group_alias::Vector{Symbol}
     base_itrs::Vector{Any}
     support_labels::Vector{Vector{Set{DataType}}}
+    has_internal_supps::Vector{Bool}
     support_to_index::Dict{Tuple{Int, Union{Float64, Vector{Float64}}}, Int}
     semivar_info::Dict{InfiniteOpt.GeneralVariableRef, Tuple{ExaModels.Variable, Vector{Any}}}
     pfunc_info::Dict{InfiniteOpt.GeneralVariableRef, Tuple{Symbol, <:Array}}
@@ -26,6 +27,7 @@ struct ExaMappingData
             Symbol[],
             [],
             Vector{Set{DataType}}[],
+            Bool[],
             Dict{Tuple{Int, Union{Float64, Vector{Float64}}}, Int}(),
             Dict{InfiniteOpt.GeneralVariableRef, Tuple{ExaModels.Variable, Vector{Any}}}(),
             Dict{InfiniteOpt.GeneralVariableRef, Tuple{Symbol, <:Array}}(),
@@ -257,6 +259,21 @@ function _get_supports(ref, pref_vt, backend)
     return supps
 end
 
+# Helper function to filter output array based on pref label
+# TODO this will need to be changed onced DomainRestrictions are added
+function _label_filter(arr, ref, label, data)
+    # check any filtering is needed
+    label == InfiniteOpt.All && return arr
+    group_idxs = InfiniteOpt.parameter_group_int_indices(ref)
+    if label == InfiniteOpt.PublicLabel && 
+        !any(data.has_internal_supps[group_idxs])
+        return arr
+    end
+    # filter the array based on the desired label
+    idxs = (findall(s -> any(l -> l <: label, s), sets) for sets in data.support_labels)
+    return arr[idxs...]
+end
+
 # InfiniteOpt support mapping methods
 function InfiniteOpt.variable_supports(
     vref::Union{
@@ -266,19 +283,23 @@ function InfiniteOpt.variable_supports(
         InfiniteOpt.ParameterFunctionRef,
         InfiniteOpt.MeasureRef
         },
-    backend::ExaTranscriptionBackend
-    ) # TODO add keywords (e.g., label)
+    backend::ExaTranscriptionBackend;
+    label::DataType = InfiniteOpt.PublicLabel
+    )
     pref_vt = InfiniteOpt.raw_parameter_refs(vref)
-    return _get_supports(vref, pref_vt, backend)
+    supps = _get_supports(vref, pref_vt, backend)
+    return _label_filter(supps, vref, label, backend.data)
 end
 # TODO find a way to support expressions
 function InfiniteOpt.constraint_supports(
     cref::InfiniteOpt.InfOptConstraintRef,
-    backend::ExaTranscriptionBackend
-    ) # TODO add keywords (e.g., label)
+    backend::ExaTranscriptionBackend;
+    label::DataType = InfiniteOpt.PublicLabel
+    )
     prefs = InfiniteOpt.parameter_refs(cref)
     pref_vt = InfiniteOpt.Collections.VectorTuple(prefs)
-    return _get_supports(cref, pref_vt, backend)
+    supps = _get_supports(cref, pref_vt, backend)
+    return _label_filter(supps, cref, label, backend.data)
 end
 
 # Check that a result is available
@@ -380,11 +401,13 @@ end
 # map_value
 function InfiniteOpt.map_value(
     vref::InfiniteOpt.GeneralVariableRef,
-    backend::ExaTranscriptionBackend
-    ) # TODO add keywords (e.g., label)
+    backend::ExaTranscriptionBackend;
+    label::DataType = InfiniteOpt.PublicLabel
+    )
     _check_results_available(backend)
     var = InfiniteOpt.transformation_variable(vref, backend)
-    return ExaModels.solution(backend.results, var)
+    vals = ExaModels.solution(backend.results, var)
+    return _label_filter(vals, vref, label, backend.data)
 end
 
 # TODO find a way to support expressions/constraints
@@ -397,8 +420,9 @@ _get_domain_dual(mL, mU, ::_MOI.EqualTo) = mL .- mU
 # map_dual
 function InfiniteOpt.map_dual(
     cref::InfiniteOpt.InfOptConstraintRef,
-    backend::ExaTranscriptionBackend
-    ) # TODO add keywords (e.g., label)
+    backend::ExaTranscriptionBackend;
+    label::DataType = InfiniteOpt.PublicLabel
+    )
     _check_results_available(backend)
     if InfiniteOpt.is_variable_domain_constraint(cref)
         con = JuMP.constraint_object(cref)
@@ -406,11 +430,12 @@ function InfiniteOpt.map_dual(
         set = JuMP.moi_set(con)
         mL = ExaModels.multipliers_L(backend.results, var) 
         mU = ExaModels.multipliers_U(backend.results, var)
-        return _get_domain_dual(mL, mU, set)
+        duals = _get_domain_dual(mL, mU, set)
     else
         con = InfiniteOpt.transformation_constraint(cref, backend)
-        return -1.0 * ExaModels.multipliers(backend.results, con)
+        duals = -1.0 * ExaModels.multipliers(backend.results, con)
     end
+    return _label_filter(duals, cref, label, backend.data)
 end
 
 # TODO add map_shadow_price, map_optimizer_index, map_reduced_cost

@@ -1,6 +1,6 @@
 using InfiniteExaModels
 
-using InfiniteOpt, NLPModelsIpopt, Ipopt
+using InfiniteOpt, NLPModelsIpopt, Ipopt, MadNLPGPU, CUDA
 
 # Define parameters
 A = [3.6362e6, 2.5212e16, 190.6879, 8.7409e24]
@@ -14,7 +14,7 @@ kr = [A[j] * exp(-Ea[j] / R / Tr[j]) for j in eachindex(A)]
 tf = 3
 
 # Define the model
-im = InfiniteModel(ExaTranscriptionBackend(IpoptSolver))
+im = InfiniteModel(ExaTranscriptionBackend(IpoptSolver, backend = nothing))
 @infinite_parameter(im, t ∈ [0, tf], num_supports = 100, derivative_method = OrthogonalCollocation(4))
 add_supports(t, [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.01, 0.1]) # add initial supports with finer resolution
 @variable(im, 0 ≤ c[i = 1:3] ≤ 1, Infinite(t), start = c0[i])

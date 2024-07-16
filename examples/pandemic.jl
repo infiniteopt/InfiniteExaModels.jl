@@ -1,6 +1,6 @@
 using InfiniteExaModels
 
-using InfiniteOpt, Distributions, NLPModelsIpopt, Ipopt, Random
+using InfiniteOpt, Distributions, NLPModelsIpopt, Ipopt, Random, MadNLP
 Random.seed!(42)
 
 # Set the parameters

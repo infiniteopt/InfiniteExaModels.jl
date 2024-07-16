@@ -29,9 +29,10 @@ function _build_base_iterators(
         end
         # create the iterator which is a vector of named tuples
         itr = [(; itr_sym => i, zip(aliases, s)...) for (i, s) in enumerate(supps)]
-        # add the iterator to `data`
+        # add the iterator to `data` and other helpful metadata
         push!(data.base_itrs, itr)
         push!(data.support_labels, labels)
+        push!(data.has_internal_supps, InfiniteOpt.has_internal_supports(first(group)))
     end
     return
 end
@@ -145,7 +146,7 @@ function _add_parameter_functions(
     for (idx, obj) in inf_model.param_functions
         # gather the basic information
         pfref = InfiniteOpt.GeneralVariableRef(inf_model, idx)
-        group_idxs = obj.func.object_nums
+        group_idxs = obj.func.group_int_idxs
         prefs = obj.func.parameter_refs # a VectorTuple
         # compute the value for each support combination and store
         itrs = map(i -> data.base_itrs[i], group_idxs)

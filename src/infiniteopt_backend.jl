@@ -270,7 +270,7 @@ function _label_filter(arr, ref, label, data)
         return arr
     end
     # filter the array based on the desired label
-    idxs = (findall(s -> any(l -> l <: label, s), sets) for sets in data.support_labels)
+    idxs = (map(s -> any(l -> l <: label, s), sets) for sets in data.support_labels)
     return arr[idxs...]
 end
 

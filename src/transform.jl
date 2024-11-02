@@ -218,7 +218,7 @@ end
 function _process_point_var(vref, data)
     ivref = InfiniteOpt.infinite_variable_ref(vref)
     if JuMP.has_lower_bound(ivref) != JuMP.has_lower_bound(vref) || 
-        JuMP.has_lower_bound(ivref) != JuMP.has_lower_bound(vref) ||
+        JuMP.has_upper_bound(ivref) != JuMP.has_upper_bound(vref) ||
         JuMP.is_fixed(ivref) != JuMP.is_fixed(vref)
         error("InfiniteExaModels does not currently support setting ",
               "bounds of point variables. Try using a constraint instead.")

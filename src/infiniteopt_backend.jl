@@ -90,7 +90,7 @@ InfiniteOpt.transformation_data(backend::ExaTranscriptionBackend) = backend.data
 function InfiniteOpt.build_transformation_backend!(
     model::InfiniteOpt.InfiniteModel,
     backend::ExaTranscriptionBackend
-    ) # TODO maybe add kwargs
+    )
     empty!(backend)
     backend.model = ExaModels.ExaModel(model, backend.data; backend = backend.backend)
     return

@@ -532,7 +532,7 @@ function _add_derivative_approximations(
             vref, 
             pref, 
             order, 
-            itr_par[pref_group], 
+            itr_par[data.group_alias[pref_group]], 
             supps, 
             _DerivReductionBackendInfo(data, itr_par),
             method,

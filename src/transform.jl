@@ -217,6 +217,12 @@ end
 # Helper function for processing point variables
 function _process_point_var(vref, data)
     ivref = InfiniteOpt.infinite_variable_ref(vref)
+    if JuMP.has_lower_bound(ivref) != JuMP.has_lower_bound(vref) || 
+        JuMP.has_lower_bound(ivref) != JuMP.has_lower_bound(vref) ||
+        JuMP.is_fixed(ivref) != JuMP.is_fixed(vref)
+        error("InfiniteExaModels does not currently support setting ",
+              "bounds of point variables. Try using a constraint instead.")
+    end
     raw_supp = InfiniteOpt.raw_parameter_values(vref)
     supp = Tuple(raw_supp, InfiniteOpt.raw_parameter_refs(ivref), use_indices = false)
     group_idxs = InfiniteOpt.parameter_group_int_indices(ivref)

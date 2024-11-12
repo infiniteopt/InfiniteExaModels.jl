@@ -19,7 +19,7 @@ InfiniteExaModelsIpopt = "NLPModelsIpopt"
 InfiniteExaModelsMadNLP = "MadNLP"
 
 [compat]
-ExaModels = "0.7"
+ExaModels = "0.7, 0.8"
 JuMP = "1.15"
 MathOptInterface = "1.19"
 MadNLP = "0.8"

@@ -6,6 +6,7 @@ struct ExaMappingData
     infvar_mappings::Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Variable}
     finvar_mappings::Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Var}
     constraint_mappings::Dict{InfiniteOpt.InfOptConstraintRef, ExaModels.Constraint}
+    finparam_mappings::Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Parameter}
 
     # Helpful metadata
     param_alias::Dict{InfiniteOpt.GeneralVariableRef, Symbol}
@@ -23,6 +24,7 @@ struct ExaMappingData
             Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Variable}(),
             Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Var}(),
             Dict{InfiniteOpt.InfOptConstraintRef, ExaModels.Constraint}(),
+            Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Parameter}(),
             Dict{InfiniteOpt.GeneralVariableRef, Symbol}(),
             Symbol[],
             [],

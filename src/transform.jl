@@ -76,6 +76,20 @@ function _add_finite_variables(
     return
 end
 
+# Add all the finite parameters from an InfiniteModel to a ExaCore
+function _add_finite_parameters(
+    core::ExaModels.ExaCore, 
+    data::ExaMappingData,
+    inf_model::InfiniteOpt.InfiniteModel
+    )
+    for pref in JuMP.all_variables(inf_model, InfiniteOpt.FiniteParameter)
+        paramVal = InfiniteOpt.parameter_value(pref)
+        newParam = ExaModels.parameter(core, [paramVal])
+        data.finparam_mappings[pref] = newParam
+    end
+    return
+end
+
 # Add all the infinite variables (and derivatives) from an InfiniteModel to a ExaCore
 function _add_infinite_variables(
     core::ExaModels.ExaCore, 
@@ -286,7 +300,7 @@ function _map_variable(vref, ::Type{<:InfiniteOpt.InfiniteParameterIndex}, itr_p
     return itr_par[data.param_alias[vref]]
 end
 function _map_variable(vref, ::Type{InfiniteOpt.FiniteParameterIndex}, itr_par, data)
-    return InfiniteOpt.parameter_value(vref)
+    return data.finparam_mappings[vref][1]
 end
 function _map_variable(vref, ::Type{InfiniteOpt.ParameterFunctionIndex}, itr_par, data)
     return itr_par[data.pfunc_info[vref][1]]
@@ -311,7 +325,7 @@ function _exafy(
     c = JuMP.constant(aff)
     if !isempty(aff.terms)
         ex = sum(begin
-            v_ex = _exafy(v, itr_par, data) 
+            v_ex = _exafy(v, itr_par, data)
             isone(c) ? v_ex : c * v_ex
             end for (c, v) in JuMP.linear_terms(aff)
             )
@@ -742,6 +756,7 @@ function build_exa_core!(
     # initial setup
     _build_base_iterators(data, inf_model)
     # add the variables and appropriate mappings
+    _add_finite_parameters(core, data, inf_model)
     _add_finite_variables(core, data, inf_model)
     _add_infinite_variables(core, data, inf_model) # includes derivatives
     _add_parameter_functions(data, inf_model)
@@ -772,7 +787,7 @@ function ExaModels.ExaModel(
     minimize = JuMP.objective_sense(inf_model) == _MOI.MIN_SENSE
     core = ExaModels.ExaCore(; backend = backend, minimize = minimize)
     build_exa_core!(core, data, inf_model)
-    return ExaModels.ExaModel(core)
+        return ExaModels.ExaModel(core)
 end
 function ExaModels.ExaModel(inf_model::InfiniteOpt.InfiniteModel; backend = nothing)
     return ExaModels.ExaModel(inf_model, ExaMappingData(), backend = backend)

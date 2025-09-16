@@ -1,4 +1,6 @@
 using Test, InfiniteOpt, InfiniteExaModels, MadNLP, NLPModelsIpopt, ExaModels
+import Pkg
+Pkg.add(url="https://github.com/infiniteopt/InfiniteOpt.jl/", rev="master")
 
 @test ExaTranscriptionBackend() isa ExaTranscriptionBackend
 

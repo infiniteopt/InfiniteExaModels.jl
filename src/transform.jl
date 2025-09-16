@@ -787,7 +787,7 @@ function ExaModels.ExaModel(
     minimize = JuMP.objective_sense(inf_model) == _MOI.MIN_SENSE
     core = ExaModels.ExaCore(; backend = backend, minimize = minimize)
     build_exa_core!(core, data, inf_model)
-        return ExaModels.ExaModel(core)
+    return ExaModels.ExaModel(core)
 end
 function ExaModels.ExaModel(inf_model::InfiniteOpt.InfiniteModel; backend = nothing)
     return ExaModels.ExaModel(inf_model, ExaMappingData(), backend = backend)

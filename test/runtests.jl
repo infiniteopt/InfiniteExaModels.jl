@@ -1,4 +1,4 @@
-using Pkg
+import Pkg
 Pkg.add(url="https://github.com/infiniteopt/InfiniteOpt.jl/", rev="master")
 using Test, InfiniteOpt, InfiniteExaModels, MadNLP, NLPModelsIpopt, ExaModels
 

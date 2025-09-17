@@ -21,17 +21,17 @@
     xMapping = exaBackend.data.finparam_mappings[x]
     y1Mapping = exaBackend.data.finparam_mappings[y[1]]
     y2Mapping = exaBackend.data.finparam_mappings[y[2]]
-    @test xMapping isa ExaModels.Parameter{Tuple{Int64}, Int64}
-    @test y1Mapping isa ExaModels.Parameter{Tuple{Int64}, Int64}
-    @test y2Mapping isa ExaModels.Parameter{Tuple{Int64}, Int64}
+    @test xMapping isa ExaModels.Parameter{Tuple{Int}, Int}
+    @test y1Mapping isa ExaModels.Parameter{Tuple{Int}, Int}
+    @test y2Mapping isa ExaModels.Parameter{Tuple{Int}, Int}
 
     # Test finite parameter queries
     @test transformation_variable(x, exaBackend) == xMapping
     @test transformation_variable(y[1], exaBackend) == y1Mapping
     @test transformation_variable(y[2], exaBackend) == y2Mapping
-    @test InfiniteExaModels._map_variable(x, x.index_type, 0, exaData) isa ExaModels.ParameterNode{Int64}
-    @test InfiniteExaModels._map_variable(y[1], y[1].index_type, 0, exaData) isa ExaModels.ParameterNode{Int64}
-    @test InfiniteExaModels._map_variable(y[2], y[2].index_type, 0, exaData) isa ExaModels.ParameterNode{Int64}
+    @test InfiniteExaModels._map_variable(x, x.index_type, 0, exaData) isa ExaModels.ParameterNode{Int}
+    @test InfiniteExaModels._map_variable(y[1], y[1].index_type, 0, exaData) isa ExaModels.ParameterNode{Int}
+    @test InfiniteExaModels._map_variable(y[2], y[2].index_type, 0, exaData) isa ExaModels.ParameterNode{Int}
     @test length(exaModel.θ) == 3
     @test exaModel.θ[xMapping.offset + 1] == 42
     @test exaModel.θ[y1Mapping.offset + 1] == yVals[1]

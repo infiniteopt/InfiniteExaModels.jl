@@ -6,6 +6,7 @@ struct ExaMappingData
     infvar_mappings::Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Variable}
     finvar_mappings::Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Var}
     constraint_mappings::Dict{InfiniteOpt.InfOptConstraintRef, ExaModels.Constraint}
+    finparam_mappings::Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Parameter}
 
     # Helpful metadata
     param_alias::Dict{InfiniteOpt.GeneralVariableRef, Symbol}
@@ -23,6 +24,7 @@ struct ExaMappingData
             Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Variable}(),
             Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Var}(),
             Dict{InfiniteOpt.InfOptConstraintRef, ExaModels.Constraint}(),
+            Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Parameter}(),
             Dict{InfiniteOpt.GeneralVariableRef, Symbol}(),
             Symbol[],
             [],
@@ -214,7 +216,7 @@ end
 # Check whether a mapping exists
 function _check_mapping(vref::InfiniteOpt.GeneralVariableRef, backend)
     data = backend.data
-    if !haskey(data.infvar_mappings, vref) && !haskey(data.finvar_mappings, vref)
+    if !haskey(data.infvar_mappings, vref) && !haskey(data.finvar_mappings, vref) && !haskey(data.finparam_mappings, vref)
         error("A mapping for `$vref` in the transformation backend not found.")
     end
     return
@@ -234,7 +236,8 @@ function InfiniteOpt.transformation_variable(
     _check_mapping(vref, backend)
     data = backend.data
     haskey(data.infvar_mappings, vref) && return data.infvar_mappings[vref]
-    return data.finvar_mappings[vref]
+    haskey(data.finvar_mappings, vref) && return data.finvar_mappings[vref]
+    return data.finparam_mappings[vref]
 end
 # TODO find a way to support expressions
 function InfiniteOpt.transformation_constraint(

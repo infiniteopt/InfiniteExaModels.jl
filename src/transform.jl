@@ -152,8 +152,9 @@ function _add_infinite_variables(
     return 
 end
 
-# Process all the parameter function from an InfiniteModel and prepare for use in a ExaCore
+# Process all the parameter function from an InfiniteModel and add to an ExaCore
 function _add_parameter_functions(
+    core::ExaModels.ExaCore,
     data::ExaMappingData,
     inf_model::InfiniteOpt.InfiniteModel
     )  
@@ -170,8 +171,10 @@ function _add_parameter_functions(
             supp = [s for nt in i for s in Iterators.drop(values(nt), 1)]
             vals[first.(i)...] = obj.func.func(Tuple(supp, prefs)...)
         end
+        # Register the parameter function values in the ExaCore & mapping data
+        pfuncExa = ExaModels.parameter(core, vals)
         alias = Symbol("pf$(idx.value)")
-        data.pfunc_info[pfref] = (alias, vals)
+        data.pfunc_info[pfref] = (alias, pfuncExa)
     end
     return
 end
@@ -405,8 +408,8 @@ function _add_parameter_functions_to_itr(expr, itr, data)
     for pfref in vrefs
         group_idxs = InfiniteOpt.parameter_group_int_indices(pfref)
         aliases = [data.group_alias[g] for g in group_idxs]
-        alias, vals = data.pfunc_info[pfref]
-        itr = [(; p..., alias => vals[values(p[aliases])...]) for p in itr]
+        alias, param = data.pfunc_info[pfref]
+        itr = [(; p..., alias => param[values(p[aliases])...]) for p in itr]
     end
     return itr
 end
@@ -759,7 +762,7 @@ function build_exa_core!(
     _add_finite_parameters(core, data, inf_model)
     _add_finite_variables(core, data, inf_model)
     _add_infinite_variables(core, data, inf_model) # includes derivatives
-    _add_parameter_functions(data, inf_model)
+    _add_parameter_functions(core, data, inf_model)
     _add_semi_infinite_variables(data, inf_model)
     _add_point_variables(data, inf_model)
     # add the constraints

@@ -16,7 +16,7 @@ struct ExaMappingData
     has_internal_supps::Vector{Bool}
     support_to_index::Dict{Tuple{Int, Union{Float64, Vector{Float64}}}, Int}
     semivar_info::Dict{InfiniteOpt.GeneralVariableRef, Tuple{ExaModels.Variable, Vector{Any}}}
-    pfunc_info::Dict{InfiniteOpt.GeneralVariableRef, Tuple{Symbol, <:Array}}
+    pfunc_info::Dict{InfiniteOpt.GeneralVariableRef, Tuple{Symbol, ExaModels.Parameter}}
     
     # Default constructor
     function ExaMappingData()
@@ -32,7 +32,7 @@ struct ExaMappingData
             Bool[],
             Dict{Tuple{Int, Union{Float64, Vector{Float64}}}, Int}(),
             Dict{InfiniteOpt.GeneralVariableRef, Tuple{ExaModels.Variable, Vector{Any}}}(),
-            Dict{InfiniteOpt.GeneralVariableRef, Tuple{Symbol, <:Array}}(),
+            Dict{InfiniteOpt.GeneralVariableRef, Tuple{Symbol, ExaModels.Parameter}}(),
         )
     end
 end

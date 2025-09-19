@@ -41,9 +41,12 @@ end
 @testset "Parameter Functions" begin
     model = InfiniteModel(ExaTranscriptionBackend(NLPModelsIpopt.IpoptSolver))
     @infinite_parameter(model, t ∈ [0, 1], num_supports = 5)
+    @infinite_parameter(model, s ∈ [2, 3], num_supports = 5)
     @variable(model, 0 ≤ v ≤ 100, Infinite(t))
     @parameter_function(model, pf == sin(t))
+    @parameter_function(model, pf2 == (t, s) -> cos(t)*s)
     @constraint(model, c1, v + pf ≤ 100)
+    @constraint(model, c2, v*2 + pf*pf2 ≤ 100)
 
     # Build the ExaModel backend
     build_transformation_backend!(model, model.backend)
@@ -51,18 +54,41 @@ end
     exaData = exaBackend.data
     exaModel = exaBackend.model
 
-    # Test parameter function mappings
+    # Test parameter function mappings (single infinite parameter)
     @test !isempty(exaData.pfunc_info)
     @test exaData.pfunc_info[pf] isa Tuple{Symbol, ExaModels.Parameter}
     (alias, pfuncExa) = exaData.pfunc_info[pf]
     @test alias == :pf1
     @test pfuncExa isa ExaModels.Parameter
     @test pfuncExa.length == 5
-    @test length(exaModel.θ) == 5
-    @test exaModel.θ[pfuncExa.offset + 1 : pfuncExa.offset + pfuncExa.length] == sin.([0., 0.25, 0.5, 0.75, 1.0])
+    expected = sin.([0., 0.25, 0.5, 0.75, 1.0])
+    @test exaModel.θ[
+        pfuncExa.offset + 1 : pfuncExa.offset + pfuncExa.length
+        ] == expected 
+    
+    # test parameter function mappings (multiple infinite parameters)
+    @test exaData.pfunc_info[pf2] isa Tuple{Symbol, ExaModels.Parameter}
+    (alias2, pfuncExa2) = exaData.pfunc_info[pf2]
+    @test alias2 == :pf2
+    @test pfuncExa2 isa ExaModels.Parameter
+    @test pfuncExa2.length == 25
+    @test length(exaModel.θ) == 30
+    t_vals = [0., 0.25, 0.5, 0.75, 1.0]
+    s_vals = [2, 2.25, 2.5, 2.75, 3]
+    expected = vec([cos(t)*s for t in t_vals, s in s_vals])
+    @test exaModel.θ[
+        pfuncExa2.offset + 1 : pfuncExa2.offset + pfuncExa2.length
+    ] == expected
 
     # Test parameter function usage in constraints
     exaConstr = exaData.constraint_mappings[c1]
     @test exaConstr isa ExaModels.Constraint
-    println(exaConstr)
+    @test all(exaConstr.itr[i][:pf1] == pfuncExa[i] for i in 1:5)
+
+    exaConstr = exaData.constraint_mappings[c2]
+    @test exaConstr isa ExaModels.Constraint
+    @test all(
+        exaConstr.itr[(j-1)*5 + i][:pf2] == pfuncExa2[i, j]
+        for i in 1:5, j in 1:5
+    )
 end

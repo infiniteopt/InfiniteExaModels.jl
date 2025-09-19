@@ -37,3 +37,26 @@
     @test exaModel.θ[y1Mapping.offset + 1] == yVals[1]
     @test exaModel.θ[y2Mapping.offset + 1] == yVals[2]
 end
+
+@testset "Parameter Functions" begin
+    model = InfiniteModel(ExaTranscriptionBackend(NLPModelsIpopt.IpoptSolver))
+    @infinite_parameter(model, t ∈ [0, 1], num_supports = 5)
+    @variable(model, 0 ≤ v ≤ 100, Infinite(t))
+    @parameter_function(model, pf == sin(t))
+
+    # Build the ExaModel backend
+    build_transformation_backend!(model, model.backend)
+    exaBackend = model.backend
+    exaData = exaBackend.data
+    exaModel = exaBackend.model
+
+    # Test parameter function mappings
+    @test !isempty(exaData.pfunc_info)
+    @test exaData.pfunc_info[pf] isa Tuple{Symbol, ExaModels.Parameter}
+    (alias, pfuncExa) = exaData.pfunc_info[pf]
+    @test alias == :pf1
+    @test pfuncExa isa ExaModels.Parameter
+    @test pfuncExa.length == 5
+    @test length(exaModel.θ) == 5
+    @test exaModel.θ[pfuncExa.offset + 1 : pfuncExa.offset + pfuncExa.length] == sin.([0., 0.25, 0.5, 0.75, 1.0])
+end

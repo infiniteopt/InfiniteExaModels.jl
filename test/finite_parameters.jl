@@ -43,6 +43,7 @@ end
     @infinite_parameter(model, t ∈ [0, 1], num_supports = 5)
     @variable(model, 0 ≤ v ≤ 100, Infinite(t))
     @parameter_function(model, pf == sin(t))
+    @constraint(model, c1, v + pf ≤ 100)
 
     # Build the ExaModel backend
     build_transformation_backend!(model, model.backend)
@@ -59,4 +60,9 @@ end
     @test pfuncExa.length == 5
     @test length(exaModel.θ) == 5
     @test exaModel.θ[pfuncExa.offset + 1 : pfuncExa.offset + pfuncExa.length] == sin.([0., 0.25, 0.5, 0.75, 1.0])
+
+    # Test parameter function usage in constraints
+    exaConstr = exaData.constraint_mappings[c1]
+    @test exaConstr isa ExaModels.Constraint
+    println(exaConstr)
 end

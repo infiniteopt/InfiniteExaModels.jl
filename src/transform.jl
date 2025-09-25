@@ -173,8 +173,7 @@ function _add_parameter_functions(
         end
         # Register the parameter function values in the ExaCore & mapping data
         pfuncExa = ExaModels.parameter(core, vals)
-        alias = Symbol("pf$(idx.value)")
-        data.pfunc_info[pfref] = (alias, pfuncExa)
+        data.finparam_mappings[pfref] = pfuncExa
     end
     return
 end
@@ -205,8 +204,7 @@ function _process_semi_infinite_var(vref, data)
     # store the desired information
     if ivref.index_type == InfiniteOpt.ParameterFunctionIndex
         indexing[isa.(indexing, Symbol)] .= Colon()
-        alias = Symbol("rpf$(vref.raw_index)")
-        data.pfunc_info[vref] = (alias, data.pfunc_info[ivref][2][indexing...])
+        data.finparam_mappings[vref] = data.finparam_mappings[ivref][indexing...]
     else
         data.semivar_info[vref] = (data.infvar_mappings[ivref], indexing)
     end
@@ -288,7 +286,7 @@ function _map_variable(
     return data.infvar_mappings[vref][idx_pars...]
 end
 function _map_variable(vref, ::Type{InfiniteOpt.SemiInfiniteVariableIndex}, itr_par, data)
-    if !haskey(data.semivar_info, vref) && !haskey(data.pfunc_info, vref)
+    if !haskey(data.semivar_info, vref) && !haskey(data.finparam_mappings, vref)
         _process_semi_infinite_var(vref, data)
     end
     if haskey(data.semivar_info, vref)
@@ -296,7 +294,9 @@ function _map_variable(vref, ::Type{InfiniteOpt.SemiInfiniteVariableIndex}, itr_
         idx_pars = (i isa Int ? i : itr_par[i] for i in inds)
         return ivar[idx_pars...]
     else # we have a reduced parameter function
-        return itr_par[data.pfunc_info[vref][1]]
+        group_idxs = InfiniteOpt.parameter_group_int_indices(vref)
+        idx_pars = (itr_par[data.group_alias[i]] for i in group_idxs)
+        return data.finparam_mappings[vref][idx_pars...]
     end
 end
 function _map_variable(vref, ::Type{<:InfiniteOpt.InfiniteParameterIndex}, itr_par, data)
@@ -306,7 +306,9 @@ function _map_variable(vref, ::Type{InfiniteOpt.FiniteParameterIndex}, itr_par, 
     return data.finparam_mappings[vref][1]
 end
 function _map_variable(vref, ::Type{InfiniteOpt.ParameterFunctionIndex}, itr_par, data)
-    return itr_par[data.pfunc_info[vref][1]]
+    group_idxs = InfiniteOpt.parameter_group_int_indices(vref)
+    idx_pars = (itr_par[data.group_alias[i]] for i in group_idxs)
+    return data.finparam_mappings[vref][idx_pars...]
 end
 function _map_variable(vref, IdxType, itr_par, data)
     error("Unable to add `$vref` to an ExaModel, it's index type `$IdxType`" *
@@ -389,31 +391,6 @@ function _get_constr_bounds(set)
     error("Constraint set `$set` is not supported by InfiniteExaModels.")
 end
 
-# Helper function to augment an expression function and iterator to incorporate parameter functions
-function _add_parameter_functions_to_itr(expr, itr, data)
-    # extract all the parameter functions in the expression
-    vrefs = InfiniteOpt.all_expression_variables(expr)
-    filter!(vrefs) do v
-        if v.index_type == InfiniteOpt.ParameterFunctionIndex
-            return true
-        elseif v.index_type == InfiniteOpt.SemiInfiniteVariableIndex
-            return InfiniteOpt.infinite_variable_ref(v).index_type == InfiniteOpt.ParameterFunctionIndex
-        else
-            return false
-        end
-    end
-    # need to sort the order to make sure the type signature for the ExaModel does not change
-    sort!(vrefs, by = v -> v.raw_index)
-    # TODO figure out how to only update the iterator once
-    for pfref in vrefs
-        group_idxs = InfiniteOpt.parameter_group_int_indices(pfref)
-        aliases = [data.group_alias[g] for g in group_idxs]
-        alias, param = data.pfunc_info[pfref]
-        itr = [(; p..., alias => param[values(p[aliases])...]) for p in itr]
-    end
-    return itr
-end
-
 # Add all the constraints from an InfiniteModel to an ExaCore
 function _add_constraints(
     core::ExaModels.ExaCore, 
@@ -445,10 +422,6 @@ function _add_constraints(
         # TODO account for DomainRestrictions
         if InfiniteOpt.has_domain_restrictions(cref)
             error("`DomainRestrictions` are not currently supported by InfiniteExaModels.")
-        end
-        # update the iterator to include parameter function values
-        if !isempty(data.pfunc_info)
-            itr = _add_parameter_functions_to_itr(expr, itr, data)
         end
         # create the ExaModels expression tree based on expr
         itr_par = ExaModels.Par(typeof(first(itr)))
@@ -669,10 +642,10 @@ end
 function _add_objective_aff_term(core, coef, vref, ::Type{InfiniteOpt.MeasureIndex}, data)
     # process the measure structure recursively as needed
     mexpr, itr = _process_measure_sum(vref, data)
-    # update the iterator to include parameter function values
-    if !isempty(data.pfunc_info)
-        itr = _add_parameter_functions_to_itr(mexpr, itr, data)
-    end
+    # # update the iterator to include parameter function values
+    # if !isempty(data.pfunc_info)
+    #     itr = _add_parameter_functions_to_itr(mexpr, itr, data)
+    # end
     # prepare the examodel expression tree
     itr_par = ExaModels.Par(typeof(first(itr)))
     em_expr = itr_par.c * _exafy(coef * mexpr, itr_par, data)

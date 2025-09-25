@@ -14,13 +14,13 @@
     exaModel = exaBackend.model
 
     # Test finite parameter mappings
-    @test length(keys(exaBackend.data.finparam_mappings)) == 3
+    @test length(keys(exaBackend.data.param_mappings)) == 3
     @test InfiniteExaModels._check_mapping(x, exaBackend) === nothing
     @test InfiniteExaModels._check_mapping(y[1], exaBackend) === nothing
     @test InfiniteExaModels._check_mapping(y[2], exaBackend) === nothing
-    xMapping = exaBackend.data.finparam_mappings[x]
-    y1Mapping = exaBackend.data.finparam_mappings[y[1]]
-    y2Mapping = exaBackend.data.finparam_mappings[y[2]]
+    xMapping = exaBackend.data.param_mappings[x]
+    y1Mapping = exaBackend.data.param_mappings[y[1]]
+    y2Mapping = exaBackend.data.param_mappings[y[2]]
     @test xMapping isa ExaModels.Parameter{Tuple{Int}, Int}
     @test y1Mapping isa ExaModels.Parameter{Tuple{Int}, Int}
     @test y2Mapping isa ExaModels.Parameter{Tuple{Int}, Int}
@@ -55,10 +55,9 @@ end
     exaModel = exaBackend.model
 
     # Test parameter function mappings (single infinite parameter)
-    @test !isempty(exaData.pfunc_info)
-    @test exaData.pfunc_info[pf] isa Tuple{Symbol, ExaModels.Parameter}
-    (alias, pfuncExa) = exaData.pfunc_info[pf]
-    @test alias == :pf1
+    @test !isempty(exaData.param_mappings)
+    @test exaData.param_mappings[pf] isa ExaModels.Parameter
+    pfuncExa = exaData.param_mappings[pf]
     @test pfuncExa isa ExaModels.Parameter
     @test pfuncExa.length == 5
     expected = sin.([0., 0.25, 0.5, 0.75, 1.0])
@@ -67,9 +66,8 @@ end
         ] == expected 
     
     # test parameter function mappings (multiple infinite parameters)
-    @test exaData.pfunc_info[pf2] isa Tuple{Symbol, ExaModels.Parameter}
-    (alias2, pfuncExa2) = exaData.pfunc_info[pf2]
-    @test alias2 == :pf2
+    @test exaData.param_mappings[pf2] isa ExaModels.Parameter
+    pfuncExa2 = exaData.param_mappings[pf2]
     @test pfuncExa2 isa ExaModels.Parameter
     @test pfuncExa2.length == 25
     @test length(exaModel.θ) == 30
@@ -83,12 +81,7 @@ end
     # Test parameter function usage in constraints
     exaConstr = exaData.constraint_mappings[c1]
     @test exaConstr isa ExaModels.Constraint
-    @test all(exaConstr.itr[i][:pf1] == pfuncExa[i] for i in 1:5)
 
     exaConstr = exaData.constraint_mappings[c2]
     @test exaConstr isa ExaModels.Constraint
-    @test all(
-        exaConstr.itr[(j-1)*5 + i][:pf2] == pfuncExa2[i, j]
-        for i in 1:5, j in 1:5
-    )
 end

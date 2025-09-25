@@ -4,6 +4,7 @@ using Test, InfiniteOpt, InfiniteExaModels, MadNLP, NLPModelsIpopt, ExaModels
 
 @test ExaTranscriptionBackend() isa ExaTranscriptionBackend
 
-@testset "Finite Parameters" begin include("finite_parameters.jl") end
+@testset "Transcription Backend" begin include("transcription.jl") end
+@testset "Parameter Function Methods" begin include("parameter_functions.jl") end
 
 # TODO add tests

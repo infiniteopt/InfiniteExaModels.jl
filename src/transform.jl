@@ -85,7 +85,7 @@ function _add_finite_parameters(
     for pref in JuMP.all_variables(inf_model, InfiniteOpt.FiniteParameter)
         paramVal = InfiniteOpt.parameter_value(pref)
         newParam = ExaModels.parameter(core, [paramVal])
-        data.finparam_mappings[pref] = newParam
+        data.param_mappings[pref] = newParam
     end
     return
 end
@@ -173,7 +173,7 @@ function _add_parameter_functions(
         end
         # Register the parameter function values in the ExaCore & mapping data
         pfuncExa = ExaModels.parameter(core, vals)
-        data.finparam_mappings[pfref] = pfuncExa
+        data.param_mappings[pfref] = pfuncExa
     end
     return
 end
@@ -204,7 +204,7 @@ function _process_semi_infinite_var(vref, data)
     # store the desired information
     if ivref.index_type == InfiniteOpt.ParameterFunctionIndex
         indexing[isa.(indexing, Symbol)] .= Colon()
-        data.finparam_mappings[vref] = data.finparam_mappings[ivref][indexing...]
+        data.param_mappings[vref] = data.param_mappings[ivref][indexing...]
     else
         data.semivar_info[vref] = (data.infvar_mappings[ivref], indexing)
     end
@@ -286,7 +286,7 @@ function _map_variable(
     return data.infvar_mappings[vref][idx_pars...]
 end
 function _map_variable(vref, ::Type{InfiniteOpt.SemiInfiniteVariableIndex}, itr_par, data)
-    if !haskey(data.semivar_info, vref) && !haskey(data.finparam_mappings, vref)
+    if !haskey(data.semivar_info, vref) && !haskey(data.param_mappings, vref)
         _process_semi_infinite_var(vref, data)
     end
     if haskey(data.semivar_info, vref)
@@ -296,19 +296,19 @@ function _map_variable(vref, ::Type{InfiniteOpt.SemiInfiniteVariableIndex}, itr_
     else # we have a reduced parameter function
         group_idxs = InfiniteOpt.parameter_group_int_indices(vref)
         idx_pars = (itr_par[data.group_alias[i]] for i in group_idxs)
-        return data.finparam_mappings[vref][idx_pars...]
+        return data.param_mappings[vref][idx_pars...]
     end
 end
 function _map_variable(vref, ::Type{<:InfiniteOpt.InfiniteParameterIndex}, itr_par, data)
     return itr_par[data.param_alias[vref]]
 end
 function _map_variable(vref, ::Type{InfiniteOpt.FiniteParameterIndex}, itr_par, data)
-    return data.finparam_mappings[vref][1]
+    return data.param_mappings[vref][1]
 end
 function _map_variable(vref, ::Type{InfiniteOpt.ParameterFunctionIndex}, itr_par, data)
     group_idxs = InfiniteOpt.parameter_group_int_indices(vref)
     idx_pars = (itr_par[data.group_alias[i]] for i in group_idxs)
-    return data.finparam_mappings[vref][idx_pars...]
+    return data.param_mappings[vref][idx_pars...]
 end
 function _map_variable(vref, IdxType, itr_par, data)
     error("Unable to add `$vref` to an ExaModel, it's index type `$IdxType`" *
@@ -642,10 +642,6 @@ end
 function _add_objective_aff_term(core, coef, vref, ::Type{InfiniteOpt.MeasureIndex}, data)
     # process the measure structure recursively as needed
     mexpr, itr = _process_measure_sum(vref, data)
-    # # update the iterator to include parameter function values
-    # if !isempty(data.pfunc_info)
-    #     itr = _add_parameter_functions_to_itr(mexpr, itr, data)
-    # end
     # prepare the examodel expression tree
     itr_par = ExaModels.Par(typeof(first(itr)))
     em_expr = itr_par.c * _exafy(coef * mexpr, itr_par, data)

@@ -414,6 +414,16 @@ function _add_parameter_functions_to_itr(expr, itr, data)
     return itr
 end
 
+# Check NamedTuple iterator respects restrictions
+function _support_in_restrictions(aliases, domains, itr)
+    for (a, d) in zip(aliases, domains)
+        if itr[a] < JuMP.lower_bound(d) || itr[a] > JuMP.upper_bound(d)
+            return false
+        end
+    end
+    return true
+end
+
 # Add all the constraints from an InfiniteModel to an ExaCore
 function _add_constraints(
     core::ExaModels.ExaCore, 
@@ -440,11 +450,14 @@ function _add_constraints(
             itr = data.base_itrs[first(group_idxs)]
         else # we depend on multiple independent infinite parameters
             itrs = map(i -> data.base_itrs[i], group_idxs)
-            itr = [merge(i...) for i in Iterators.product(itrs...)]
+            itr = vec([merge(i...) for i in Iterators.product(itrs...)])
         end
-        # TODO account for DomainRestrictions
+        # Remove any elements of the iterator that violate the domain restrictions
         if InfiniteOpt.has_domain_restrictions(cref)
-            error("`DomainRestrictions` are not currently supported by InfiniteExaModels.")
+            restrictions = InfiniteOpt.domain_restrictions(cref)
+            aliases = [data.param_alias[p] for p in keys(restrictions)]
+            domains = [restrictions[p] for p in keys(restrictions)]
+            filter!(i -> _support_in_restrictions(aliases, domains, i), itr)
         end
         # update the iterator to include parameter function values
         if !isempty(data.pfunc_info)

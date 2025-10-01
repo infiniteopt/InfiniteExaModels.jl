@@ -203,11 +203,11 @@ function _process_semi_infinite_var(vref, data)
     end
     # store the desired information
     if ivref.index_type == InfiniteOpt.ParameterFunctionIndex
-        indexing[isa.(indexing, Symbol)] .= Colon()
-        data.param_mappings[vref] = data.param_mappings[ivref][indexing...]
+        mapped_var = data.param_mappings[ivref]
     else
-        data.semivar_info[vref] = (data.infvar_mappings[ivref], indexing)
+        mapped_var = data.infvar_mappings[ivref]
     end
+    data.semivar_info[vref] = (mapped_var, indexing)
     return
 end
 
@@ -286,18 +286,12 @@ function _map_variable(
     return data.infvar_mappings[vref][idx_pars...]
 end
 function _map_variable(vref, ::Type{InfiniteOpt.SemiInfiniteVariableIndex}, itr_par, data)
-    if !haskey(data.semivar_info, vref) && !haskey(data.param_mappings, vref)
+    if !haskey(data.semivar_info, vref)
         _process_semi_infinite_var(vref, data)
     end
-    if haskey(data.semivar_info, vref)
-        ivar, inds = data.semivar_info[vref]
-        idx_pars = (i isa Int ? i : itr_par[i] for i in inds)
-        return ivar[idx_pars...]
-    else # we have a reduced parameter function
-        group_idxs = InfiniteOpt.parameter_group_int_indices(vref)
-        idx_pars = (itr_par[data.group_alias[i]] for i in group_idxs)
-        return data.param_mappings[vref][idx_pars...]
-    end
+    ivar, inds = data.semivar_info[vref]
+    idx_pars = (i isa Int ? i : itr_par[i] for i in inds)
+    return ivar[idx_pars...]
 end
 function _map_variable(vref, ::Type{<:InfiniteOpt.InfiniteParameterIndex}, itr_par, data)
     return itr_par[data.param_alias[vref]]

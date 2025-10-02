@@ -1,3 +1,4 @@
+tol = 1E-6
 @testset "Test Problem 1" begin
     # Setup model and get ground truth results
     m = InfiniteModel(Ipopt.Optimizer)
@@ -18,7 +19,46 @@
     @test set_transformation_backend(m, ExaTranscriptionBackend(IpoptSolver)) isa Nothing
     @test set_silent(m) isa Nothing
     @test optimize!(m).status == :first_order 
-    @test isapprox(obj, objective_value(m), atol = 1e-6)
-    @test all(isapprox.(yval, value(y), atol = 1e-6))
-    @test isapprox.(zval, value(z), atol = 1e-6)
+    @test isapprox(obj, objective_value(m), atol = tol)
+    @test all(isapprox.(yval, value(y), atol = tol))
+    @test isapprox.(zval, value(z), atol = tol)
+end
+
+@testset "Parameter Function Problem" begin
+    # Test custom function for parameter function
+    function paramFunc2(t, s, tk)
+        if t ≤ 0.5
+            return cos(t)*s - tk
+        else
+            return sin(t)*s + tk
+        end
+    end
+
+    # Build the InfiniteModel & get ground truth results
+    ti = 0.2
+    m = InfiniteModel(Ipopt.Optimizer)
+    @infinite_parameter(m, t ∈ [0, 1], num_supports = 5)
+    @infinite_parameter(m, s ∈ [2, 3], num_supports = 5)
+    @variable(m, 0 ≤ v ≤ 100, Infinite(t))
+    @variable(m, 0 ≤ z ≤ 100, Infinite(t, s))
+    @parameter_function(m, pf == sin(t))
+    @parameter_function(m, pf2 == (t, s) -> paramFunc2(t, s, ti))
+    @constraint(m, c1, v + pf ≤ 100)
+    @constraint(m, c2, v*2 + pf*pf2 ≤ 100)
+    @constraint(m, c3, v ≥ 0.5*pf2)
+    @constraint(m, c4, z(t, 2.5) + pf2*pf ≤ 40)    # Test semi-infinite variable in constraint
+    @constraint(m, c5, v*∫(pf2, s) ≤ 100)   # Test semi-infinite param func in measure
+    @objective(m, Min, ∫(v*pf, t) + ∫(∫(0.5*z*pf2, t), s))
+    set_silent(m)
+    optimize!(m)
+    obj = objective_value(m)
+    vVal = value(v)
+    zVal = value(z)
+    # test with ExaTranscriptionBackend
+    @test set_transformation_backend(m, ExaTranscriptionBackend(IpoptSolver)) isa Nothing
+    @test set_silent(m) isa Nothing
+    @test optimize!(m).status == :first_order
+    @test isapprox(obj, objective_value(m), atol = tol)
+    @test all(isapprox.(vVal, value(v), atol = tol))
+    @test all(isapprox.(zVal, value(z), atol = tol))
 end

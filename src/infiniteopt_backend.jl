@@ -6,7 +6,7 @@ struct ExaMappingData
     infvar_mappings::Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Variable}
     finvar_mappings::Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Var}
     constraint_mappings::Dict{InfiniteOpt.InfOptConstraintRef, ExaModels.Constraint}
-    finparam_mappings::Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Parameter}
+    param_mappings::Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Parameter}
 
     # Helpful metadata
     param_alias::Dict{InfiniteOpt.GeneralVariableRef, Symbol}
@@ -15,8 +15,14 @@ struct ExaMappingData
     support_labels::Vector{Vector{Set{DataType}}}
     has_internal_supps::Vector{Bool}
     support_to_index::Dict{Tuple{Int, Union{Float64, Vector{Float64}}}, Int}
-    semivar_info::Dict{InfiniteOpt.GeneralVariableRef, Tuple{ExaModels.Variable, Vector{Any}}}
-    pfunc_info::Dict{InfiniteOpt.GeneralVariableRef, Tuple{Symbol, ExaModels.Parameter}}
+    # Semi-infinite variable info
+    semivar_info::Dict{
+        InfiniteOpt.GeneralVariableRef,
+        Tuple{
+            Union{ExaModels.Variable, ExaModels.Parameter},
+            Vector{Any}
+        }
+    }
     
     # Default constructor
     function ExaMappingData()
@@ -31,8 +37,13 @@ struct ExaMappingData
             Vector{Set{DataType}}[],
             Bool[],
             Dict{Tuple{Int, Union{Float64, Vector{Float64}}}, Int}(),
-            Dict{InfiniteOpt.GeneralVariableRef, Tuple{ExaModels.Variable, Vector{Any}}}(),
-            Dict{InfiniteOpt.GeneralVariableRef, Tuple{Symbol, ExaModels.Parameter}}(),
+            Dict{
+                InfiniteOpt.GeneralVariableRef,
+                Tuple{
+                    Union{ExaModels.Variable, ExaModels.Parameter},
+                    Vector{Any}
+                }
+            }(),
         )
     end
 end
@@ -216,7 +227,7 @@ end
 # Check whether a mapping exists
 function _check_mapping(vref::InfiniteOpt.GeneralVariableRef, backend)
     data = backend.data
-    if !haskey(data.infvar_mappings, vref) && !haskey(data.finvar_mappings, vref) && !haskey(data.finparam_mappings, vref)
+    if !haskey(data.infvar_mappings, vref) && !haskey(data.finvar_mappings, vref) && !haskey(data.param_mappings, vref)
         error("A mapping for `$vref` in the transformation backend not found.")
     end
     return
@@ -237,7 +248,7 @@ function InfiniteOpt.transformation_variable(
     data = backend.data
     haskey(data.infvar_mappings, vref) && return data.infvar_mappings[vref]
     haskey(data.finvar_mappings, vref) && return data.finvar_mappings[vref]
-    return data.finparam_mappings[vref]
+    return data.param_mappings[vref]
 end
 # TODO find a way to support expressions
 function InfiniteOpt.transformation_constraint(

@@ -388,8 +388,10 @@ end
 # Check NamedTuple iterator respects restrictions
 function _support_in_restrictions(aliases, domains, itr)
     for (a, d) in zip(aliases, domains)
-        if itr[a] < JuMP.lower_bound(d) || itr[a] > JuMP.upper_bound(d)
-            return false
+        if haskey(itr, a)
+            if itr[a] < JuMP.lower_bound(d) || itr[a] > JuMP.upper_bound(d)
+                return false
+            end
         end
     end
     return true

@@ -25,6 +25,8 @@ tol = 1E-6
     # Test Orthogonal Collocation
     set_derivative_method(t, OrthogonalCollocation(3))
     set_transformation_backend(m, TranscriptionBackend(Ipopt.Optimizer))
+    @variable(m, u, Infinite(t))
+    constant_over_collocation(u, t)
     set_silent(m)
     optimize!(m)
     obj = objective_value(m)

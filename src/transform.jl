@@ -619,6 +619,7 @@ function _make_measure_itr(mdata, data)
 end
 
 # Determine if expression can be reformulated such that all terms move inside the inner measure
+# Assumes that `expr` only contains 1 unique measure
 _terms_can_be_moved_inside_measure(::JuMP.GenericAffExpr, mref) = true
 function _terms_can_be_moved_inside_measure(quad::JuMP.GenericQuadExpr, mref)
     return !haskey(quad.terms, JuMP.UnorderedPair(mref, mref))

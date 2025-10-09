@@ -623,6 +623,7 @@ _terms_can_be_moved_inside_measure(::JuMP.GenericAffExpr, mref) = true
 function _terms_can_be_moved_inside_measure(quad::JuMP.GenericQuadExpr, mref)
     return !haskey(quad.terms, JuMP.UnorderedPair(mref, mref))
 end
+_terms_can_be_moved_inside_measure(expr, mref) = false
 # TODO maybe we can support some nonlinear expressions
 
 # Recursively extract expression and iterator to be included in the objective

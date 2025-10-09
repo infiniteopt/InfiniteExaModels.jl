@@ -618,7 +618,14 @@ function _make_measure_itr(mdata, data)
     return [(; :c => c, alias => data.support_to_index[group, s], zip(aliases, s)...) for (c, s) in zip(coeffs, supps)]
 end
 
-# Recursively extract expresion and iterator to be included in the objective
+# Determine if expression can be reformulated such that all terms move inside the inner measure
+_terms_can_be_moved_inside_measure(::JuMP.GenericAffExpr, mref) = true
+function _terms_can_be_moved_inside_measure(quad::JuMP.GenericQuadExpr, mref)
+    return !haskey(quad.terms, JuMP.UnorderedPair(mref, mref))
+end
+# TODO maybe we can support some nonlinear expressions
+
+# Recursively extract expression and iterator to be included in the objective
 function _process_measure_sum(vref, data, prev_itr = nothing)
     mexpr = InfiniteOpt.measure_function(vref)
     mdata = InfiniteOpt.measure_data(vref)
@@ -629,10 +636,15 @@ function _process_measure_sum(vref, data, prev_itr = nothing)
         itr = [(i[1]..., i[2]..., c = i[1].c * i[2].c) for i in Iterators.product(curr_itr, prev_itr)]
     end
     vrefs = InfiniteOpt.all_expression_variables(mexpr)
-    if all(v.index_type != InfiniteOpt.MeasureIndex for v in vrefs) # single measure without measures inside of it
+    mrefs = filter(v -> v.index_type == InfiniteOpt.MeasureIndex, vrefs)
+    if isempty(mrefs) # single measure without measures inside of it
         return mexpr, itr
     elseif mexpr isa InfiniteOpt.GeneralVariableRef # single nested measure
         return _process_measure_sum(mexpr, data, itr)
+    elseif isone(length(mrefs)) && _terms_can_be_moved_inside_measure(mexpr, only(mrefs))
+        mref = only(mrefs)
+        inner_mexpr, new_itr = _process_measure_sum(mref, data, itr)
+        return InfiniteOpt.map_expression(v -> isequal(v, mref) ? inner_mexpr : v, mexpr), new_itr
     # TODO add more clever heuristics to avoid expanding
     else # fallback for complex nested measures
         inf_model = JuMP.owner_model(vref)

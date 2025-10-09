@@ -40,6 +40,45 @@ tol = 1E-6
     @test isapprox.(zval, value(z), atol = tol)
 end
 
+@testset "Test Problem 2" begin
+    # Setup model and get ground truth results
+    m = InfiniteModel(Ipopt.Optimizer)
+    set_silent(m)
+    @infinite_parameter(m, t in [0, 1], num_supports = 5)
+    @infinite_parameter(m, x in [-1, 1], num_supports = 5)
+    @variable(m, y >= 0, Infinite(t, x))
+    @variable(m, z, start = 10)
+    @objective(m, Min, ∫(∫(y^2, t) + 2z, x) + 2y(0, 1))
+    @constraint(m, ∂(y, t) == sin(y) + z + 1.2)
+    @constraint(m, y + z <= 42 + t)
+    @constraint(m, ∂(y(0, x), x) == 5)
+    optimize!(m)
+    obj = objective_value(m)
+    yval = value(y)
+    zval = value(z)
+    # test with ExaTranscriptionBackend
+    @test set_transformation_backend(m, ExaTranscriptionBackend(IpoptSolver)) isa Nothing
+    @test set_silent(m) isa Nothing
+    @test optimize!(m).status == :first_order 
+    @test isapprox(obj, objective_value(m), atol = tol)
+    @test all(isapprox.(yval, value(y), atol = tol))
+    @test isapprox.(zval, value(z), atol = tol)
+    # Test other objective
+    @objective(m, Min, ∫(∫(y^2, t) + 2z^2, x) + 2y(0, 1))
+    set_transformation_backend(m, TranscriptionBackend(Ipopt.Optimizer))
+    set_silent(m)
+    optimize!(m)
+    obj = objective_value(m)
+    yval = value(y)
+    zval = value(z)
+    @test set_transformation_backend(m, ExaTranscriptionBackend(IpoptSolver)) isa Nothing
+    @test set_silent(m) isa Nothing
+    @test optimize!(m).status == :first_order 
+    @test isapprox(obj, objective_value(m), atol = tol)
+    @test all(isapprox.(yval, value(y), atol = tol))
+    @test isapprox.(zval, value(z), atol = tol)
+end
+
 @testset "Parameter Function Problem" begin
     # Test custom function for parameter function
     function paramFunc2(t, s, tk)

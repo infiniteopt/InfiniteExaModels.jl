@@ -63,20 +63,29 @@ end
     @test isapprox(obj, objective_value(m), atol = tol)
     @test all(isapprox.(yval, value(y), atol = tol))
     @test isapprox.(zval, value(z), atol = tol)
-    # Test other objective
-    @objective(m, Min, ∫(∫(y^2, t) + 2z^2, x) + 2y(0, 1))
-    set_transformation_backend(m, TranscriptionBackend(Ipopt.Optimizer))
-    set_silent(m)
-    optimize!(m)
-    obj = objective_value(m)
-    yval = value(y)
-    zval = value(z)
-    @test set_transformation_backend(m, ExaTranscriptionBackend(IpoptSolver)) isa Nothing
-    @test set_silent(m) isa Nothing
-    @test optimize!(m).status == :first_order 
-    @test isapprox(obj, objective_value(m), atol = tol)
-    @test all(isapprox.(yval, value(y), atol = tol))
-    @test isapprox.(zval, value(z), atol = tol)
+    # Test other objectives
+    int = ∫(y^2, t)
+    objs = [
+        ∫(int + 2z^2, x) + 2y(0, 1),
+        ∫(int + sin(z^2), x),
+        ∫(int * cos(z), x),
+        ∫(z * (int + z^3), x)
+    ]
+    for obj in objs
+        @objective(m, Min, obj)
+        set_transformation_backend(m, TranscriptionBackend(Ipopt.Optimizer))
+        set_silent(m)
+        optimize!(m)
+        obj = objective_value(m)
+        yval = value(y)
+        zval = value(z)
+        @test set_transformation_backend(m, ExaTranscriptionBackend(IpoptSolver)) isa Nothing
+        @test set_silent(m) isa Nothing
+        @test optimize!(m).status == :first_order 
+        @test isapprox(obj, objective_value(m), atol = tol)
+        @test all(isapprox.(yval, value(y), atol = tol))
+        @test isapprox.(zval, value(z), atol = tol)
+    end
 end
 
 @testset "Parameter Function Problem" begin

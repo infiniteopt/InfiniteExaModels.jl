@@ -85,3 +85,37 @@ end
     exaConstr = exaData.constraint_mappings[c2]
     @test exaConstr isa ExaModels.Constraint
 end
+
+@testset "Objectives" begin
+    model = InfiniteModel()
+    @infinite_parameter(model, t in [0, 1], num_supports = 3)
+    @infinite_parameter(model, x[1:2] in [-1, 1], independent = true, num_supports = 5)
+    @variable(model, y, Infinite(t, x...))
+    @variable(model, q, Infinite(t))
+    @variable(model, z)
+    x1_int = ∫(y^2, x[1])
+    # Test ok objectives
+    objs = [
+        ∫(∫(x1_int, x[2]), t),
+        ∫(∫(x1_int, x[2]) + 2q^2, t),
+        ∫(∫(x1_int, x[2]) * sin(q), t),
+        ∫(∫(x1_int, x[2]) + 2q, t),
+        ∫(∫(x1_int, x[2]) + sin(q), t),
+    ]
+    for obj in objs
+        @objective(model, Min, obj)
+        @test ExaModel(model) isa ExaModel
+    end
+    # Test not so good objectives
+    objs = [
+        ∫(∫(x1_int^2, x[2]), t),
+        ∫(∫(sin(x1_int), x[2]), t),
+        ∫(∫(x1_int * x1_int^2.3 , x[2]), t),
+        ∫(∫(sin(x1_int^2), x[2]), t),
+        ∫(∫(x1_int + ∫(sin(y), x[1]), x[2]), t),
+    ]
+    for obj in objs
+        @objective(model, Min, obj)
+        @test_logs (:warn, InfiniteExaModels._ObjMeasureExpansionWarn) ExaModel(model) isa ExaModel
+    end
+end

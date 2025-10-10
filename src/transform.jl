@@ -618,12 +618,32 @@ function _make_measure_itr(mdata, data)
     return [(; :c => c, alias => data.support_to_index[group, s], zip(aliases, s)...) for (c, s) in zip(coeffs, supps)]
 end
 
+# Does an expression contain vref? (TODO: make this more efficient)
+function _has_variable(expr, vref)
+    return vref in InfiniteOpt.all_expression_variables(expr)
+end
+
 # Determine if expression can be reformulated such that all terms move inside the inner measure
+# Assumes that `expr` only contains 1 unique measure
+_terms_can_be_moved_inside_measure(::InfiniteOpt.GeneralVariableRef, mref) = true
 _terms_can_be_moved_inside_measure(::JuMP.GenericAffExpr, mref) = true
 function _terms_can_be_moved_inside_measure(quad::JuMP.GenericQuadExpr, mref)
     return !haskey(quad.terms, JuMP.UnorderedPair(mref, mref))
 end
-# TODO maybe we can support some nonlinear expressions
+function _terms_can_be_moved_inside_measure(nlp::JuMP.GenericNonlinearExpr, mref)
+    m_inds = findall(ex -> _has_variable(ex, mref), nlp.args)
+    if nlp.head in (:+, :-)
+        return all(_terms_can_be_moved_inside_measure(ex, mref) for ex in nlp.args[m_inds])
+    elseif nlp.head == :*
+        if length(m_inds) > 1
+            return false
+        else
+            return _terms_can_be_moved_inside_measure(nlp.args[only(m_inds)], mref)
+        end
+    else
+        return false
+    end
+end
 
 # Recursively extract expression and iterator to be included in the objective
 function _process_measure_sum(vref, data, prev_itr = nothing)
@@ -639,8 +659,6 @@ function _process_measure_sum(vref, data, prev_itr = nothing)
     mrefs = filter(v -> v.index_type == InfiniteOpt.MeasureIndex, vrefs)
     if isempty(mrefs) # single measure without measures inside of it
         return mexpr, itr
-    elseif mexpr isa InfiniteOpt.GeneralVariableRef # single nested measure
-        return _process_measure_sum(mexpr, data, itr)
     elseif isone(length(mrefs)) && _terms_can_be_moved_inside_measure(mexpr, only(mrefs))
         mref = only(mrefs)
         inner_mexpr, new_itr = _process_measure_sum(mref, data, itr)

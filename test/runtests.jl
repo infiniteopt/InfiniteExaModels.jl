@@ -8,7 +8,8 @@ println("************************************************\n")
 
 @testset "Transcription Backend" begin include("transcription.jl") end
 @testset "Solve Tests" begin include("solve.jl") end
-@testset "MadNLP Extension" begin include("madnlp.jl") end
+@testset "InfiniteExaModelsMadNLP" begin include("madnlp.jl") end
+@testset "InfiniteExaModelsIpopt" begin include("ipopt.jl") end
 
 # TODO add more tests
 

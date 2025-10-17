@@ -183,19 +183,17 @@ function _process_semi_infinite_var(vref, data)
     orig_group_idxs = InfiniteOpt.parameter_group_int_indices(ivref)
     raw_prefs = InfiniteOpt.raw_parameter_refs(ivref) # type `InfiniteOpt.VectorTuple`
     group_idxs = InfiniteOpt.parameter_group_int_indices(vref)
-    eval_supps = InfiniteOpt.eval_supports(vref)
+    eval_supp = InfiniteOpt.eval_support(vref)
     # create metadata vector `indexing` 
     indexing = Vector{Any}(undef, length(orig_group_idxs))
     for (i, g) in enumerate(orig_group_idxs)
         if g in group_idxs
             indexing[i] = data.group_alias[g] # get the group alias for indexing
-        elseif isnothing(raw_prefs.indices[i])
-            pref_ind = first(raw_prefs.ranges[i])
-            supp = eval_supps[pref_ind]
+        elseif iszero(raw_prefs.dimensions[i])
+            supp = eval_supp[first(raw_prefs.ranges[i])]
             indexing[i] = data.support_to_index[g, supp] # store the support index
         else
-            pref_inds = raw_prefs.ranges[i]
-            supp = [eval_supps[i] for i in pref_inds]
+            supp = eval_supp[raw_prefs.ranges[i]]
             indexing[i] = data.support_to_index[g, supp] # store the support index
         end
     end
@@ -237,7 +235,11 @@ function _process_point_var(vref, data)
               "bounds of point variables. Try using a constraint instead.")
     end
     raw_supp = InfiniteOpt.raw_parameter_values(vref)
-    supp = Tuple(raw_supp, InfiniteOpt.raw_parameter_refs(ivref), use_indices = false)
+    prefs = InfiniteOpt.raw_parameter_refs(ivref)
+    supp = Tuple(raw_supp, prefs)
+    if any(d >= 2 for d in prefs.dimensions)
+        supp = Tuple(InfiniteOpt.Collections.vectorize(s)[1] for s in supp)
+    end
     group_idxs = InfiniteOpt.parameter_group_int_indices(ivref)
     idxs = Tuple(data.support_to_index[i, s] for (i, s) in zip(group_idxs, supp))
     return data.infvar_mappings[ivref][idxs...]

@@ -236,8 +236,10 @@ function _process_point_var(vref, data)
     end
     raw_supp = InfiniteOpt.raw_parameter_values(vref)
     prefs = InfiniteOpt.raw_parameter_refs(ivref)
-    @assert all(d <= 1 for d in prefs.dimensions) "InfiniteExaModels does not currently support matrix infinite parameters."
     supp = Tuple(raw_supp, prefs)
+    if any(d >= 2 for d in prefs.dimensions)
+        supp = Tuple(InfiniteOpt.Collections.vectorize(s)[1] for s in supp)
+    end
     group_idxs = InfiniteOpt.parameter_group_int_indices(ivref)
     idxs = Tuple(data.support_to_index[i, s] for (i, s) in zip(group_idxs, supp))
     return data.infvar_mappings[ivref][idxs...]

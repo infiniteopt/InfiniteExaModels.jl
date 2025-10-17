@@ -4,7 +4,7 @@ import InfiniteExaModels, NLPModelsIpopt, SolverCore
 
 # Account for the silent and time limit settings
 function _process_options(options, backend)
-        if isnothing(backend.prev_options)
+    if isnothing(backend.prev_options)
         # Save the options for potential resolve
         backend.prev_options = options
     else

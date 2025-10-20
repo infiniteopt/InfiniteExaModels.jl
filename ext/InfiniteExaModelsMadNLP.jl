@@ -40,6 +40,9 @@ function _process_options(options, backend)
 
         # Save updated options for more potential resolves
         merge!(backend.prev_options, options)
+
+        # TODO: add logic to update logger to match print_level
+        # m.backend.solver.logger.print_level = m.backend.solver.opt.print_level
     end
     return
 end

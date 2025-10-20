@@ -15,18 +15,35 @@
     optimize!(m)
     tol = 1e-6
     @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
-    println("m.backend.options = $(m.backend.options)")
     @test !isempty(m.backend.prev_options)
     @test m.backend.prev_options == Dict(:print_level => 0, :max_wall_time => 120.0)
 
     # Update & add new solver options
+    unset_silent(m) # Turn off silent mode
+    set_time_limit_sec(m, 200.0)   # Change time time_limit
     set_optimizer_attribute(m, :max_iter, 50)
     set_optimizer_attribute(m, :mu_init, 1e-2)
-    set_optimizer_attribute(m, :max_wall_time, 200.0)
     set_optimizer_attribute(m, :tol, 1e-6)  # new option
+    @test m.backend.silent == false
 
     # Resolve the same problem
     optimize!(m)
     @test isapprox(objective_value(m), -1.2784599867885884e+01, atol=tol)
-    @test m.backend.prev_options == Dict(:max_iter => 50, :mu_init => 1e-2, :max_wall_time => 200.0, :print_level => 0, :tol => 1e-6)
+    @test m.backend.prev_options == Dict(:max_iter => 50, :mu_init => 1e-2, :max_wall_time => 200.0, :print_level => 5, :tol => 1e-6)
+
+    # Change the print level & unset time limit
+    set_optimizer_attribute(m, :print_level, 3)
+    unset_time_limit_sec(m)
+    @test isnan(m.backend.time_limit)
+
+    # Solve one more time
+    optimize!(m)
+    @test isapprox(objective_value(m), -1.2784599867885884e+01, atol=tol)
+    prev = m.backend.prev_options
+    @test length(keys(prev)) == 5
+    @test prev[:max_iter] == 50
+    @test prev[:mu_init] == 1e-2
+    @test isnan(prev[:max_wall_time])
+    @test prev[:print_level] == 3
+    @test prev[:tol] == 1e-6
 end

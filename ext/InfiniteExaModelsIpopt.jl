@@ -5,9 +5,34 @@ import InfiniteExaModels, NLPModelsIpopt, SolverCore
 # Account for the silent and time limit settings
 function _process_options(options, backend)
     if isnothing(backend.prev_options)
-        # Save the options for potential resolve
+        # Process silent setting
+        if backend.silent
+            options[:print_level] = 0
+        end
+        # Process time limit setting
+        if !isnan(backend.time_limit)
+            options[:max_wall_time] = backend.time_limit
+        end
+
+        # Save options for potential resolve
         backend.prev_options = options
     else
+        prev = backend.prev_options
+        # Process silent setting in options
+        if backend.silent
+            # Updating to silent
+            options[:print_level] = 0
+        elseif !haskey(options, :print_level) && prev[:print_level] == 0
+            # Update to default if print level not specified
+            options[:print_level] = 5
+        end
+        # Process time limit setting in options
+        if !isnan(backend.time_limit)
+            options[:max_wall_time] = backend.time_limit
+        else
+            options[:max_wall_time] = NaN
+        end
+
         # Keep only new or updated options to pass into solve!
         prev = backend.prev_options
         is_new = pair -> !haskey(prev, pair.first) || prev[pair.first] != pair.second
@@ -15,12 +40,6 @@ function _process_options(options, backend)
 
         # Save updated options for more potential resolves
         merge!(backend.prev_options, options)
-    end
-    if backend.silent
-        options[:print_level] = 0
-    end
-    if !isnan(backend.time_limit)
-        options[:max_wall_time] = backend.time_limit
     end
     return
 end

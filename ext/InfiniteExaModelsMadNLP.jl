@@ -6,22 +6,40 @@ import MathOptInterface as _MOI
 # Account for the silent and time limit settings
 function _process_options(options, backend)
     if isnothing(backend.prev_options)
-        # Save the options for potential resolve
+        # Process silent setting
+        if backend.silent
+            options[:print_level] = MadNLP.ERROR
+        end
+        # Process time limit setting
+        if !isnan(backend.time_limit)
+            options[:max_wall_time] = backend.time_limit
+        end
+
+        # Save options for potential resolve
         backend.prev_options = options
     else
-        # Keep only new or updated options to pass into solve!
         prev = backend.prev_options
+        # Process silent setting in options
+        if backend.silent
+            # Updating to silent
+            options[:print_level] = MadNLP.ERROR
+        elseif !haskey(options, :print_level) && prev[:print_level] == MadNLP.ERROR
+            # Update to default if print level not specified
+            options[:print_level] = MadNLP.INFO
+        end
+        # Process time limit setting in options
+        if !isnan(backend.time_limit)
+            options[:max_wall_time] = backend.time_limit
+        else
+            options[:max_wall_time] = NaN
+        end
+
+        # Filter to pass only new or updated options into solve!()
         is_new = pair -> !haskey(prev, pair.first) || prev[pair.first] != pair.second
         options = filter(is_new, options)
 
         # Save updated options for more potential resolves
         merge!(backend.prev_options, options)
-    end
-    if backend.silent
-        options[:print_level] = MadNLP.ERROR
-    end
-    if !isnan(backend.time_limit)
-        options[:max_wall_time] = backend.time_limit
     end
     return
 end

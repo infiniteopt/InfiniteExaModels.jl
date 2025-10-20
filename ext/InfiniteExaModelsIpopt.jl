@@ -8,6 +8,9 @@ function _process_options(options, backend)
         # Process silent setting
         if backend.silent
             options[:print_level] = 0
+        elseif !haskey(options, :print_level)
+            # Default print level
+            options[:print_level] = 5
         end
         # Process time limit setting
         if !isnan(backend.time_limit)

@@ -1,4 +1,5 @@
-@testset "Ipopt option updates" begin
+tol = 1e-6
+@testset "Ipopt option updates 1" begin
     # Create base problem with some solver options
     m = InfiniteModel(ExaTranscriptionBackend(NLPModelsIpopt.IpoptSolver))
     @infinite_parameter(m, t in [0, 1], num_supports = 5)
@@ -9,15 +10,15 @@
     @constraint(m, ∂(y, t) == sin(y) + z + 1.2)
     @constraint(m, y + z <= 42 + t)
     set_silent(m)
+    etb = m.backend
     set_time_limit_sec(m, 120.0)
-    @test m.backend.silent == true
-    @test m.backend.time_limit == 120.0
+    @test etb.silent == true
+    @test etb.time_limit == 120.0
     optimize!(m)
-    tol = 1e-6
     @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
-    @test !isempty(m.backend.prev_options)
-    @test m.backend.prev_options == Dict(:print_level => 0, :max_wall_time => 120.0)
-    @test !isnothing(m.backend.results)
+    @test !isempty(etb.prev_options)
+    @test etb.prev_options == Dict(:print_level => 0, :max_wall_time => 120.0)
+    @test !isnothing(etb.results)
 
     # Update & add new solver options
     unset_silent(m) # Turn off silent mode
@@ -25,29 +26,63 @@
     set_optimizer_attribute(m, :max_iter, 50)
     set_optimizer_attribute(m, :mu_init, 1e-2)
     set_optimizer_attribute(m, :tol, 1e-6)  # new option
-    @test m.backend.silent == false
+    @test etb.silent == false
 
     # Ensure that the results from before weren't wiped after changing options
-    @test !isnothing(m.backend.results)
+    @test !isnothing(etb.results)
 
     # Resolve the same problem
     optimize!(m)
     @test isapprox(objective_value(m), -1.2784599867885884e+01, atol=tol)
-    @test m.backend.prev_options == Dict(:max_iter => 50, :mu_init => 1e-2, :max_wall_time => 200.0, :print_level => 5, :tol => 1e-6)
+    @test etb.prev_options == Dict(:max_iter => 50, :mu_init => 1e-2, :max_wall_time => 200.0, :print_level => 5, :tol => 1e-6)
+end
+
+@testset "Ipopt option updates 2" begin
+    # Create base problem with some solver options
+    m = InfiniteModel(ExaTranscriptionBackend(NLPModelsIpopt.IpoptSolver))
+    @infinite_parameter(m, t in [0, 1], num_supports = 5)
+    @infinite_parameter(m, x in [-1, 1], num_supports = 5)
+    @variable(m, y >= 0, Infinite(t, x))
+    @variable(m, z, start = 10)
+    @objective(m, Min, ∫(∫(y^2, t) + 2z, x))
+    @constraint(m, ∂(y, t) == sin(y) + z + 1.2)
+    @constraint(m, y + z <= 42 + t)
+    etb = m.backend
+    set_time_limit_sec(m, 120.0)
+    @test etb.time_limit == 120.0
+    set_optimizer_attribute(m, :max_iter, 50)
+    set_optimizer_attribute(m, :mu_init, 1e-2)
+    set_optimizer_attribute(m, :tol, 1e-6)
+
+    optimize!(m)
+    @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
+    @test !isempty(etb.prev_options)
+    @test etb.prev_options == Dict(:print_level => 5, :max_iter => 50, :mu_init => 1e-2, :tol => 1e-6, :max_wall_time => 120.0)
+    @test !isnothing(etb.results)
 
     # Change the print level & unset time limit
     set_optimizer_attribute(m, :print_level, 3)
     unset_time_limit_sec(m)
-    @test isnan(m.backend.time_limit)
+    @test isnan(etb.time_limit)
 
-    # Solve one more time
+    # Solve again
     optimize!(m)
     @test isapprox(objective_value(m), -1.2784599867885884e+01, atol=tol)
-    prev = m.backend.prev_options
+    prev = etb.prev_options
     @test length(keys(prev)) == 5
     @test prev[:max_iter] == 50
     @test prev[:mu_init] == 1e-2
     @test isnan(prev[:max_wall_time])
     @test prev[:print_level] == 3
     @test prev[:tol] == 1e-6
+
+    # Change options again to test silent mode
+    set_silent(m)
+    set_time_limit_sec(m, 150.0)
+    @test etb.silent == true
+    @test etb.time_limit == 150.0
+    optimize!(m)
+    @test isapprox(objective_value(m), -1.2784599867885884e+01, atol=tol)
+    @test etb.prev_options[:print_level] == 0
+
 end

@@ -67,7 +67,7 @@ end
     @test etb.solver.opt.mu_init == 1e-2  # MadNLP default
     @test etb.solver.opt.max_wall_time == etb.time_limit
     @test !isempty(etb.prev_options)
-    @test etb.prev_options == Dict(:print_level => MadNLP.INFO, :max_iter => 50, :mu_init => 1e-2, :tol => 1e-6, :max_wall_time => 120.0)
+    @test etb.prev_options == Dict(:max_iter => 50, :mu_init => 1e-2, :tol => 1e-6, :max_wall_time => 120.0)
     @test !isnothing(etb.results)
 
     # Change the print level & unset time limit
@@ -79,12 +79,8 @@ end
     optimize!(m)
     @test isapprox(objective_value(m), -1.2784599867885884e+01, atol=tol)
     prev = etb.prev_options
-    @test length(keys(prev)) == 5
-    @test prev[:max_iter] == 50
-    @test prev[:mu_init] == 1e-2
-    @test isnan(prev[:max_wall_time])
+    @test length(keys(prev)) == 1
     @test prev[:print_level] == MadNLP.WARN
-    @test prev[:tol] == 1e-6
     @test etb.solver.logger.print_level == MadNLP.WARN
 
     # Change options again to test silent mode

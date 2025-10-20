@@ -55,7 +55,7 @@ mutable struct ExaTranscriptionBackend{B} <: InfiniteOpt.AbstractTransformationB
     model::Union{Nothing, ExaModels.ExaModel}
     backend::B
     solver::Any
-    prev_options::Union{Dict{Symbol, Any}, Nothing}
+    prev_options::Dict{Symbol, Any}
     options::Dict{Symbol, Any}
     silent::Bool
     time_limit::Float64
@@ -72,7 +72,7 @@ function ExaTranscriptionBackend(; backend = nothing)
         nothing,
         backend,
         nothing,
-        nothing,
+        Dict{Symbol, Any}(),
         Dict{Symbol, Any}(),
         false,
         NaN,

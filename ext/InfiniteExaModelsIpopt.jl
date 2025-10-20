@@ -4,47 +4,35 @@ import InfiniteExaModels, NLPModelsIpopt, SolverCore
 
 # Account for the silent and time limit settings
 function _process_options(options, backend)
-    if isnothing(backend.prev_options)
-        # Process silent setting
-        if backend.silent
-            options[:print_level] = 0
-        elseif !haskey(options, :print_level)
-            # Default print level
+    prev_options = backend.prev_options
+
+    # Process silent setting
+    if backend.silent
+        options[:print_level] = 0
+    elseif !haskey(options, :print_level)
+        if haskey(prev_options, :print_level) && iszero(prev_options[:print_level])
+            # If previously silent, set to default
             options[:print_level] = 5
         end
-        # Process time limit setting
-        if !isnan(backend.time_limit)
-            options[:max_wall_time] = backend.time_limit
-        end
-
-        # Save options for potential resolve
-        backend.prev_options = options
-    else
-        prev = backend.prev_options
-        # Process silent setting in options
-        if backend.silent
-            # Updating to silent
-            options[:print_level] = 0
-        elseif !haskey(options, :print_level) && prev[:print_level] == 0
-            # Update to default if print level not specified
-            options[:print_level] = 5
-        end
-        # Process time limit setting in options
-        if !isnan(backend.time_limit)
-            options[:max_wall_time] = backend.time_limit
-        else
-            options[:max_wall_time] = NaN
-        end
-
-        # Keep only new or updated options to pass into solve!
-        prev = backend.prev_options
-        is_new = pair -> !haskey(prev, pair.first) || prev[pair.first] != pair.second
-        options = filter(is_new, options)
-
-        # Save updated options for more potential resolves
-        merge!(backend.prev_options, options)
     end
-    return
+
+    # Process time limit setting
+    if !isnan(backend.time_limit)
+        options[:max_wall_time] = backend.time_limit
+    else
+        # Delete time limit if previously set
+        delete!(options, :max_wall_time)
+    end
+
+    # Get new or updated options to pass to solver
+    new_options = Dict(
+        k => v 
+        for (k, v) in options 
+        if !haskey(prev_options, k) || prev_options[k] != v
+    )
+    # Save updated options for more potential resolves
+    backend.prev_options = copy(new_options)
+    return new_options
 end
 
 # Setup the solver, solve it, and return the results
@@ -53,9 +41,9 @@ function InfiniteExaModels.initial_solve(
     backend,
     options
     )
-    _process_options(options, backend)
+    sol_options = _process_options(options, backend)
     backend.solver = type(backend.model)
-    return SolverCore.solve!(backend.solver, backend.model; options...)
+    return SolverCore.solve!(backend.solver, backend.model; sol_options...)
 end
 
 # Prepare solver for resolve, solve it, and return the results
@@ -64,10 +52,9 @@ function InfiniteExaModels.resolve(
     backend,
     options
     )
-    _process_options(options, backend)
-    # TODO handle removal of silence/time settings
+    sol_options = _process_options(options, backend)
     SolverCore.reset!(solver, backend.model)
-    return SolverCore.solve!(solver, backend.model; options...)
+    return SolverCore.solve!(solver, backend.model, backend.results; sol_options...)
 end
 
 end

@@ -20,6 +20,7 @@
     @test m.backend.solver.opt.max_wall_time == m.backend.time_limit
     @test !isempty(m.backend.prev_options)
     @test m.backend.prev_options == Dict(:print_level => MadNLP.ERROR, :max_wall_time => 120.0)
+    @test !isnothing(m.backend.results)
 
     # Update & add new solver options
     unset_silent(m) # Turn off silent mode
@@ -28,6 +29,9 @@
     set_optimizer_attribute(m, :mu_init, 1e-2)
     set_optimizer_attribute(m, :tol, 1e-6)  # new option
     @test m.backend.silent == false
+
+    # Ensure that the results from before weren't wiped after changing options
+    @test !isnothing(m.backend.results)
 
     # Resolve the same problem
     optimize!(m)

@@ -118,7 +118,6 @@ function JuMP.get_attribute(backend::ExaTranscriptionBackend, attr::Symbol)
     return backend.options[attr]
 end
 function JuMP.set_attribute(backend::ExaTranscriptionBackend, attr::Symbol, value)
-    backend.results = nothing
     backend.solve_time = NaN
     backend.options[attr] = value
     return

@@ -9,6 +9,9 @@ function _process_options(options, backend)
         # Process silent setting
         if backend.silent
             options[:print_level] = MadNLP.ERROR
+        elseif !haskey(options, :print_level)
+            # Default print level
+            options[:print_level] = MadNLP.INFO
         end
         # Process time limit setting
         if !isnan(backend.time_limit)
@@ -41,8 +44,8 @@ function _process_options(options, backend)
         # Save updated options for more potential resolves
         merge!(backend.prev_options, options)
 
-        # TODO: add logic to update logger to match print_level
-        # m.backend.solver.logger.print_level = m.backend.solver.opt.print_level
+        # Update solver logger print level
+        backend.solver.logger.print_level = prev[:print_level]
     end
     return
 end

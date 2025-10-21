@@ -10,9 +10,9 @@ function _process_options(options, backend)
     # Process silent setting
     if backend.silent
         options[:print_level] = MadNLP.ERROR
-    elseif !haskey(options, :print_level)
-        if haskey(prev_options, :print_level) && prev_options[:print_level] == MadNLP.ERROR
-            # If previously silent, set to default
+    elseif haskey(prev_options, :print_level) && prev_options[:print_level] == MadNLP.ERROR
+        if !haskey(options, :print_level)
+            # If previously silent & not otherwise specified, restore to default
             options[:print_level] = MadNLP.INFO
         end
     end
@@ -31,11 +31,6 @@ function _process_options(options, backend)
         for (k, v) in options 
         if !haskey(prev_options, k) || prev_options[k] != v
     )
-
-    # Update solver logger print level (for resolves)
-    if !isnothing(backend.solver) && haskey(new_options, :print_level)
-        backend.solver.logger.print_level = new_options[:print_level]
-    end
 
     # Save updated options for more potential resolves
     backend.prev_options = copy(new_options)
@@ -60,6 +55,10 @@ function InfiniteExaModels.resolve(
     options
     )
     sol_options = _process_options(options, backend)
+    # Update solver logger print level (for resolves)
+    if haskey(sol_options, :print_level)
+        backend.solver.logger.print_level = sol_options[:print_level]
+    end
     return MadNLP.solve!(backend.model, solver; sol_options...)
 end
 

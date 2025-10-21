@@ -5,33 +5,28 @@ import InfiniteExaModels, NLPModelsIpopt, SolverCore
 # Account for the silent and time limit settings
 function _process_options(options, backend)
     prev_options = backend.prev_options
-
-    # Process silent setting
-    if backend.silent
-        options[:print_level] = 0
-    elseif !haskey(options, :print_level)
-        if haskey(prev_options, :print_level) && iszero(prev_options[:print_level])
-            # If previously silent, set to default
-            options[:print_level] = 5
-        end
-    end
-
-    # Process time limit setting
-    if !isnan(backend.time_limit)
-        options[:max_wall_time] = backend.time_limit
-    else
-        # Delete time limit if previously set
-        delete!(options, :max_wall_time)
-    end
-
     # Get new or updated options to pass to solver
-    new_options = Dict(
+    new_options = Dict{Symbol, Any}(
         k => v 
         for (k, v) in options 
         if !haskey(prev_options, k) || prev_options[k] != v
     )
+    # Process silent setting
+    if backend.silent
+        new_options[:print_level] = 0
+    elseif iszero(get(prev_options, :print_level, 1)) && !haskey(new_options, :print_level)
+        # If previously silent & not otherwise specified, restore to default
+        new_options[:print_level] = 5
+    end
+    # Process time limit setting
+    if !isnan(backend.time_limit) && get(prev_options, :max_wall_time, NaN) != backend.time_limit
+        new_options[:max_wall_time] = backend.time_limit
+    elseif !haskey(new_options, :max_wall_time) && isnan(backend.time_limit) && !isnan(get(prev_options, :max_wall_time, NaN))
+        # If previously silent & not otherwise specified, restore to default time limit
+        new_options[:max_wall_time] = 1.0e20
+    end
     # Save updated options for more potential resolves
-    backend.prev_options = copy(new_options)
+    backend.prev_options = new_options
     return new_options
 end
 

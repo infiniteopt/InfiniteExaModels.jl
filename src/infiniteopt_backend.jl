@@ -55,6 +55,7 @@ mutable struct ExaTranscriptionBackend{B} <: InfiniteOpt.AbstractTransformationB
     model::Union{Nothing, ExaModels.ExaModel}
     backend::B
     solver::Any
+    prev_options::Dict{Symbol, Any}
     options::Dict{Symbol, Any}
     silent::Bool
     time_limit::Float64
@@ -71,6 +72,7 @@ function ExaTranscriptionBackend(; backend = nothing)
         nothing,
         backend,
         nothing,
+        Dict{Symbol, Any}(),
         Dict{Symbol, Any}(),
         false,
         NaN,
@@ -116,7 +118,6 @@ function JuMP.get_attribute(backend::ExaTranscriptionBackend, attr::Symbol)
     return backend.options[attr]
 end
 function JuMP.set_attribute(backend::ExaTranscriptionBackend, attr::Symbol, value)
-    backend.results = nothing
     backend.solve_time = NaN
     backend.options[attr] = value
     return

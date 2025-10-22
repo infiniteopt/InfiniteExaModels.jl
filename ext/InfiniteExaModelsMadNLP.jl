@@ -3,15 +3,32 @@ module InfiniteExaModelsMadNLP
 import InfiniteExaModels, MadNLP, SolverCore
 import MathOptInterface as _MOI
 
-# Account for the silent and time limit settings
+# Set new solver options + update existing ones
 function _process_options(options, backend)
+    prev_options = backend.prev_options
+    # Get new or updated options to pass to solver
+    new_options = Dict{Symbol, Any}(
+        k => v 
+        for (k, v) in options 
+        if !haskey(prev_options, k) || prev_options[k] != v
+    )
+    # Process silent setting
     if backend.silent
-        options[:print_level] = MadNLP.ERROR
+        new_options[:print_level] = MadNLP.ERROR
+    elseif get(prev_options, :print_level, 1) == MadNLP.ERROR && !haskey(new_options, :print_level)
+        new_options[:print_level] = MadNLP.INFO
     end
-    if !isnan(backend.time_limit)
-        options[:max_wall_time] = backend.time_limit
+    # Process time limit setting
+    if !isnan(backend.time_limit) && get(prev_options, :max_wall_time, NaN) != backend.time_limit
+        new_options[:max_wall_time] = backend.time_limit
+    elseif !haskey(new_options, :max_wall_time) && isnan(backend.time_limit) && !isnan(get(prev_options, :max_wall_time, NaN))
+        # If previously silent & not otherwise specified, restore to default time limit
+        new_options[:max_wall_time] = 1.0E6
     end
-    return
+
+    # Save updated options for more potential resolves
+    backend.prev_options = new_options
+    return new_options
 end
 
 # Setup the solver, solve it, and return the results
@@ -20,9 +37,9 @@ function InfiniteExaModels.initial_solve(
     backend,
     options
     )
-    _process_options(options, backend)
-    backend.solver = type(backend.model; options...)
-    return SolverCore.solve!(backend.solver)
+    sol_options = _process_options(options, backend)
+    backend.solver = type(backend.model; sol_options...)
+    return MadNLP.solve!(backend.solver)
 end
 
 # Prepare solver for resolve, solve it, and return the results
@@ -31,10 +48,12 @@ function InfiniteExaModels.resolve(
     backend,
     options
     )
-    _process_options(options, backend)
-    # TODO handle removal of silence/time settings
-    # TODO fix this to handle options correctly (might require fix with MadNLP)
-    return SolverCore.solve!(backend.model, solver; options...)
+    sol_options = _process_options(options, backend)
+    # Update solver logger print level (for resolves)
+    if haskey(sol_options, :print_level)
+        backend.solver.logger.print_level = sol_options[:print_level]
+    end
+    return MadNLP.solve!(backend.model, solver; sol_options...)
 end
 
 # Standard JSO statuses to MOI.TerminationStatusCode

@@ -52,6 +52,7 @@ end
 
 """
 mutable struct ExaTranscriptionBackend{B} <: InfiniteOpt.AbstractTransformationBackend
+    core::Union{Nothing, ExaModels.ExaCore}
     model::Union{Nothing, ExaModels.ExaModel}
     backend::B
     solver::Any
@@ -69,6 +70,7 @@ end
 """
 function ExaTranscriptionBackend(; backend = nothing)
     return ExaTranscriptionBackend(
+        nothing,
         nothing,
         backend,
         nothing,
@@ -107,8 +109,8 @@ function InfiniteOpt.build_transformation_backend!(
     backend::ExaTranscriptionBackend
     )
     empty!(backend)
-    backend.model = ExaModels.ExaModel(model, backend.data; backend = backend.backend)
-    return
+    backend.core = ExaModels.ExaCore(model, backend.data; backend = backend.backend)
+    backend.model = ExaModels.ExaModel(backend.core)
 end
 
 ## Solver settings

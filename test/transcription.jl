@@ -10,9 +10,10 @@
     # Build the ExaModel backend
     build_transformation_backend!(model, model.backend)
     exaBackend = model.backend
-    exaData = exaBackend.data
+    @test exaBackend.core isa ExaModels.ExaCore
     exaModel = exaBackend.model
-
+    exaData = exaBackend.data
+    
     # Test finite parameter mappings
     @test length(keys(exaBackend.data.param_mappings)) == 3
     @test InfiniteExaModels._check_mapping(x, exaBackend) === nothing

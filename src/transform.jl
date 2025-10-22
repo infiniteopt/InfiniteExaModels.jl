@@ -789,7 +789,7 @@ end
 """
 
 """
-function ExaModels.ExaModel(
+function ExaModels.ExaCore(
     inf_model::InfiniteOpt.InfiniteModel,
     data::ExaMappingData;
     backend = nothing
@@ -798,6 +798,18 @@ function ExaModels.ExaModel(
     minimize = JuMP.objective_sense(inf_model) == _MOI.MIN_SENSE
     core = ExaModels.ExaCore(; backend = backend, minimize = minimize)
     build_exa_core!(core, data, inf_model)
+    return core
+end
+
+"""
+
+"""
+function ExaModels.ExaModel(
+    inf_model::InfiniteOpt.InfiniteModel,
+    data::ExaMappingData;
+    backend = nothing
+    )
+    core = ExaModels.ExaCore(inf_model, data; backend = backend)
     return ExaModels.ExaModel(core)
 end
 function ExaModels.ExaModel(inf_model::InfiniteOpt.InfiniteModel; backend = nothing)

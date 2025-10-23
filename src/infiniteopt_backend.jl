@@ -461,41 +461,38 @@ function InfiniteOpt.update_parameter_value(
     pref::InfiniteOpt.FiniteParameterRef,
     value::Real
     )
+    data = backend.data
+    core = backend.core
+    pref = InfiniteOpt.GeneralVariableRef(pref)
     # Check if the mapping exists
-    _check_mapping(pref, backend)
-    # Update the parameter value in the ExaCore, which updates the ExaModel too
-    exaCore = backend.core
-    param = InfiniteOpt.transformation_variable(pref, backend)
-    ExaModels.set_parameter!(exaCore, param, value)
-    return
+    haskey(data.param_mappings, pref) || return false
+    # Update the value in the ExaCore, which updates the ExaModel too
+    ExaModels.set_parameter!(
+        core,
+        data.param_mappings[pref],
+        [value]
+    )
+    return true
 end
 
 # For updating parameter functions
 function InfiniteOpt.update_parameter_value(
     backend::ExaTranscriptionBackend,
     pfref::InfiniteOpt.ParameterFunctionRef,
-    updateFunc::Function
+    value::Function
     )
-    # Check if the mapping exists
-    _check_mapping(pfref, backend)
-    # Generate the new parameter function values
-    exaCore = backend.core
     data = backend.data
-    obj = InfiniteOpt.core_object(pfref)
-    group_idxs = obj.group_int_idxs
-    prefs = obj.parameter_refs
-    # compute the value for each support combination and store
-    itrs = map(i -> data.base_itrs[i], group_idxs)
-    dims = length.(itrs)
-    updateVals = zeros(dims...)
-    for i in Iterators.product(itrs...)
-        supp = [s for nt in i for s in Iterators.drop(values(nt), 1)]
-        updateVals[first.(i)...] = updateFunc(Tuple(supp, prefs)...)
-    end
-    # Update the parameter value in the ExaCore, which updates the ExaModel too
-    param = InfiniteOpt.transformation_variable(pfref, backend)
-    ExaModels.set_parameter!(exaCore, param, updateVals)
-    return
+    core = backend.core
+    supps = InfiniteOpt.variable_supports(pfref, backend; label = InfiniteOpt.All)
+    pfref = InfiniteOpt.GeneralVariableRef(pfref)
+    # Check if the mapping exists
+    haskey(data.param_mappings, pfref) || return false
+    # Generate the new parameter function values
+    vals = map(supp -> value(supp...), supps)
+    # Update the values in the ExaCore, which updates the ExaModel too
+    param = data.param_mappings[pfref]
+    ExaModels.set_parameter!(core, param, vals)
+    return true
 end
 
 # TODO add map_shadow_price, map_optimizer_index, map_reduced_cost

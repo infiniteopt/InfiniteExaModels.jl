@@ -161,6 +161,11 @@ end
     @objective(m, Min, ∫(∫(y^2, t) + 2z, x))
     @constraint(m, ∂(y, t) == sin(y) + z + 1.2)
     @constraint(m, y + z <= 42 + t)
+    # Try to warmstart without any results
+    @test_logs (
+        :warn,
+        "No previous solution values found. Unable to warmstart backend."
+        ) warmstart_backend_start_values(m)
     output = @capture_out result = optimize!(m)
     result1 = m.backend.results
     @test occursin("This is Ipopt version", output)

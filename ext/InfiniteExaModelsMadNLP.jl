@@ -65,15 +65,6 @@ function InfiniteExaModels.resolve(
     return MadNLP.solve!(backend.model, solver; sol_options...)
 end
 
-function InfiniteExaModels.warmstart_backend(
-    backend::InfiniteExaModels.ExaTranscriptionBackend,
-    solver::MadNLP.MadNLPSolver
-    )
-    results = backend.results
-    copyto!(NLPModels.get_x0(backend.model), results.solution)
-    return
-end
-
 # Standard JSO statuses to MOI.TerminationStatusCode
 const _TerminationMappings = Dict{MadNLP.Status, _MOI.TerminationStatusCode}(
     MadNLP.SOLVE_SUCCEEDED => _MOI.LOCALLY_SOLVED,

@@ -170,26 +170,28 @@ end
     @objective(m, Min, ∫(∫(y^2, t) + 2z, x))
     @constraint(m, ∂(y, t) == sin(y) + z + 1.2)
     @constraint(m, y + z <= 42 + t)
-    output = @capture_out result = optimize!(m)
-    result1 = m.backend.results
-    @test occursin("This is MadNLP version", output)
-    @test occursin("Number of Iterations....: 8", output)
-    @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
-    expected = zeros(51)
-    expected[1] = 10.0
-    @test NLPModels.get_x0(m.backend.model) == expected
-    warmstart_backend_start_values(m)
-    @test NLPModels.get_x0(m.backend.model) == result1.solution
-    output = @capture_out result = optimize!(m)
-    # Should converge in 1 iteration if warmstarted
-    @test occursin("Number of Iterations....: 8", output)
-    # Reset the solution
-    m.backend.results = nothing
-    copyto!(NLPModels.get_x0(m.backend.model), zeros(51))
+    # Try to warmstart without any results
     @test_logs (
         :warn,
         "No previous solution values found. Unable to warmstart backend."
         ) warmstart_backend_start_values(m)
     output = @capture_out result = optimize!(m)
-    @test occursin("Number of Iterations....: 19", output)
+    etb = InfiniteOpt.transformation_backend(m)
+    result1 = etb.results
+    @test occursin("This is MadNLP version", output)
+    @test occursin("Number of Iterations....: 8", output)
+    @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
+    expected = zeros(51)
+    expected[1] = 10.0
+    model = InfiniteOpt.transformation_model(m)
+    @test NLPModels.get_x0(model) == expected
+    @test_logs (
+        :warn,
+        "Updating start values in the backend, but warmstarting may not take effect for solver type $(typeof(etb.solver))."
+        ) warmstart_backend_start_values(m)
+    @test NLPModels.get_x0(model) == result1.solution
+    @test NLPModels.get_y0(model) == result1.multipliers
+    output = @capture_out result = optimize!(m)
+    # Should converge in 1 iteration if warmstarted
+    @test occursin("Number of Iterations....: 8", output)
 end

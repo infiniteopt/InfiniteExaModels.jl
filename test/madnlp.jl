@@ -185,10 +185,7 @@ end
     expected[1] = 10.0
     model = InfiniteOpt.transformation_model(m)
     @test NLPModels.get_x0(model) == expected
-    @test_logs (
-        :warn,
-        "Updating start values in the backend, but warmstarting may not take effect for solver type $(typeof(etb.solver))."
-        ) warmstart_backend_start_values(m)
+    warmstart_backend_start_values(m)
     @test NLPModels.get_x0(model) == result1.solution
     @test NLPModels.get_y0(model) == result1.multipliers
     output = @capture_out result = optimize!(m)

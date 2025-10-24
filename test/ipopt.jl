@@ -200,10 +200,7 @@ end
     mockoptimizer = () -> MOIU.MockOptimizer(MOIU.UniversalFallback(MOIU.Model{Float64}()),
                                              eval_objective_value=false)
     etb.solver = mockoptimizer
-    @test_logs (
-    :warn,
-    "Updating start values in the backend, but warmstarting may not take effect for solver type $(typeof(mockoptimizer)).",
-    ) warmstart_backend_start_values(m)
+    warmstart_backend_start_values(m)
     results = etb.results
     @test all(isapprox(NLPModels.get_x0(model), results.solution, atol=tol))
     @test all(isapprox(NLPModels.get_y0(model), results.multipliers, atol = tol))

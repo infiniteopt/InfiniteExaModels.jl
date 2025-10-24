@@ -523,7 +523,6 @@ function warmstart_backend(
     backend::ExaTranscriptionBackend,
     solver
     )
-    @warn("Updating start values in the backend, but warmstarting may not take effect for solver type $(typeof(solver)).")
     results = backend.results
     copyto!(NLPModels.get_x0(backend.model), results.solution)
     copyto!(NLPModels.get_y0(backend.model), results.multipliers)
@@ -535,7 +534,7 @@ function InfiniteOpt.warmstart_backend_start_values(
     kwargs...
     )
     if !isnothing(backend.results)
-        return warmstart_backend(backend, backend.solver)
+        return warmstart_backend(backend, backend.solver; kwargs...)
     else
         @warn("No previous solution values found. Unable to warmstart backend.")
         return

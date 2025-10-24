@@ -519,4 +519,24 @@ function InfiniteOpt.update_parameter_value(
     return true
 end
 
+# Fallback for unrecognized solver
+function warmstart_backend(
+    backend::ExaTranscriptionBackend,
+    solver
+    )
+    @warn("Unsupported solver type $(typeof(solver)). Unable to warmstart.")
+    return
+end
+
+function InfiniteOpt.warmstart_backend_start_values(
+    backend::ExaTranscriptionBackend;
+    kwargs...
+    )
+    if !isnothing(backend.results)
+        return warmstart_backend(backend, backend.solver)
+    else
+        @warn("No previous solution values found to warmstart the backend.")
+        return
+    end
+end
 # TODO add map_shadow_price, map_optimizer_index, map_reduced_cost

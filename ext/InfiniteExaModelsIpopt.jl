@@ -25,6 +25,14 @@ function _process_options(options, backend)
         # If previously silent & not otherwise specified, restore to default time limit
         new_options[:max_wall_time] = 1.0e20
     end
+    # Turn off warmstart
+    if get(new_options, :warm_start_init_point, false) == "no"
+        # Disable warmstarting
+        delete!(backend.options, :x0)
+        delete!(backend.options, :y0)
+        delete!(backend.options, :zL0)
+        delete!(backend.options, :zU0)
+    end
     # Save updated options for more potential resolves
     backend.prev_options = new_options
     return new_options
@@ -49,7 +57,23 @@ function InfiniteExaModels.resolve(
     )
     sol_options = _process_options(options, backend)
     SolverCore.reset!(solver, backend.model)
+    if isnothing(backend.results)
+        backend.results = SolverCore.GenericExecutionStats(backend.model)
+    end
     return SolverCore.solve!(solver, backend.model, backend.results; sol_options...)
 end
 
+function InfiniteExaModels.warmstart_backend(
+    backend::InfiniteExaModels.ExaTranscriptionBackend,
+    solver::NLPModelsIpopt.IpoptSolver
+    )
+    results = backend.results
+    options = backend.options
+    # Add to options so that these can be passed onto the solver later on
+    options[:x0] = results.solution
+    options[:y0] = results.multipliers
+    options[:zL0] = results.multipliers_L
+    options[:zU0] = results.multipliers_U
+    return
+end
 end

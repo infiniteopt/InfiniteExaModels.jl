@@ -18,7 +18,10 @@ tol = 1e-6
     @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
     @test !isempty(etb.prev_options)
     @test etb.options == Dict(:solver => IpoptSolver)
-    @test etb.prev_options == Dict(:print_level => 0, :max_wall_time => 120.0)
+    @test etb.prev_options == Dict(
+        :print_level => 0,
+        :max_wall_time => 120.0
+        )
     @test !isnothing(etb.results)
 
     # Update & add new solver options
@@ -36,20 +39,18 @@ tol = 1e-6
     output = @capture_out results = optimize!(m)
     @test occursin("This is Ipopt version", output)  
     @test isapprox(objective_value(m), -1.2784599867885884e+01, atol=tol)
-    @test etb.options ==
-        Dict(
-            :solver   => IpoptSolver,
-            :max_iter => 50,
-            :mu_init  => 1e-2,
-            :tol      => 1e-6,
+    @test etb.options == Dict(
+        :solver   => IpoptSolver,
+        :max_iter => 50,
+        :mu_init  => 1e-2,
+        :tol      => 1e-6,
         )
-    @test etb.prev_options ==
-        Dict(
-            :max_iter      => 50,
-            :mu_init       => 1e-2,
-            :tol           => 1e-6,
-            :print_level   => 5,
-            :max_wall_time => 200.0,
+    @test etb.prev_options == Dict(
+        :max_iter      => 50,
+        :mu_init       => 1e-2,
+        :tol           => 1e-6,
+        :print_level   => 5,
+        :max_wall_time => 200.0,
         )
 end
 
@@ -73,19 +74,17 @@ end
     @test occursin("This is Ipopt version", output)
     @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
     @test !isempty(etb.prev_options)
-    @test etb.options == 
-        Dict(
-            :solver => IpoptSolver,
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
+    @test etb.options == Dict(
+        :solver => IpoptSolver,
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
         )
-    @test etb.prev_options == 
-        Dict(
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
-            :max_wall_time => 120.0
+    @test etb.prev_options == Dict(
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
+        :max_wall_time => 120.0
         )
     @test !isnothing(etb.results)
 
@@ -99,14 +98,19 @@ end
     @test occursin("Total number of variables", output)
     @test isapprox(objective_value(m), -1.2784599867885884e+01, atol=tol)
     prev = etb.prev_options
-    @test prev == Dict(:print_level => 3, :max_wall_time => 1.0e20)
-    @test etb.options ==
-        Dict(
-            :solver => IpoptSolver,
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
-            :print_level => 3,
+    @test prev == Dict(
+        :print_level => 3,
+        :max_wall_time => 1.0e20,
+        :tol => 1e-6,
+        :mu_init => 1e-2,
+        :max_iter => 50,
+        )
+    @test etb.options == Dict(
+        :solver => IpoptSolver,
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
+        :print_level => 3,
         )
 
     # Set silent mode and time limit
@@ -116,38 +120,38 @@ end
     @test etb.time_limit == 150.0
     @test (output = @capture_out optimize!(m)) == ""
     @test isapprox(objective_value(m), -1.2784599867885884e+01, atol=tol)
-    @test etb.options ==
-        Dict(
-            :solver => IpoptSolver,
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
-            :print_level => 3,
+    @test etb.options == Dict(
+        :solver => IpoptSolver,
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
+        :print_level => 3,
         )
-    @test etb.prev_options ==
-        Dict(
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
-            :max_wall_time => 150.0,
-            :print_level => 0,
+    @test etb.prev_options == Dict(
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
+        :max_wall_time => 150.0,
+        :print_level => 0,
         )
 
     # Restore previous print level after unsetting silent
     unset_silent(m)
     output = @capture_out result = optimize!(m)
     @test occursin("Total number of variables", output)
-    @test etb.options ==
-        Dict(
-            :solver => IpoptSolver,
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
-            :print_level => 3,
+    @test etb.options == Dict(
+        :solver => IpoptSolver,
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
+        :print_level => 3,
         )
-    @test etb.prev_options ==
-        Dict(
-            :print_level => 3,
+    @test etb.prev_options == Dict(
+        :print_level => 3,
+        :max_wall_time => 150,
+        :tol => 1e-6,
+        :mu_init => 1e-2,
+        :max_iter => 50
         )
 end
 
@@ -161,73 +165,15 @@ end
     @objective(m, Min, ∫(∫(y^2, t) + 2z, x))
     @constraint(m, ∂(y, t) == sin(y) + z + 1.2)
     @constraint(m, y + z <= 42 + t)
-    # Try to warmstart without any results
-    @test_logs (
-        :warn,
-        "No previous solution values found. Unable to warmstart backend."
-        ) warmstart_backend_start_values(m)
-    output = @capture_out result = optimize!(m)
-    result1 = m.backend.results
-    @test occursin("This is Ipopt version", output)
-    @test occursin("Number of Iterations....: 8", output)
-    @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
-    expected = zeros(51)
-    expected[1] = 10.0
-    @test NLPModels.get_x0(m.backend.model) == expected
-    warmstart_backend_start_values(m)
-    @test m.backend.options[:x0] == result1.solution
-    @test m.backend.options[:y0] == result1.multipliers
-    @test m.backend.options[:zL0] == result1.multipliers_L
-    @test m.backend.options[:zU0] == result1.multipliers_U
-    set_optimizer_attribute(m, "print_user_options", "yes")
-    output = @capture_out result = optimize!(m)
-    @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
-    for key in [:x0, :y0, :zL0, :zU0]
-        @test haskey(m.backend.prev_options, key)
-    end
-    # Should converge in 4 iterations if warmstarted
-    @test occursin("Number of Iterations....: 4", output)
-    @test occursin("warm_start_init_point = yes", output)
-    # Reset the solution & turn off warmstarting
-    m.backend.results = nothing
-    set_optimizer_attribute(m, "warm_start_init_point", "no")
-    @test_logs (
-        :warn,
-        "No previous solution values found. Unable to warmstart backend."
-        ) warmstart_backend_start_values(m)
-    output = @capture_out result = optimize!(m)
-    @test m.backend.options[:warm_start_init_point] == "no"
-    for key in [:x0, :y0, :zL0, :zU0]
-        @test !haskey(m.backend.prev_options, key)
-    end
-    @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
-    @test occursin("Number of Iterations....: 8", output)
-    # Try to warmstart with a nonsensical solver
-    mockoptimizer = () -> MOIU.MockOptimizer(MOIU.UniversalFallback(MOIU.Model{Float64}()),
-                                             eval_objective_value=false)
-    m.backend.solver = mockoptimizer
-    @test_logs (
-    :warn,
-    "Unsupported solver type $(typeof(mockoptimizer)). Unable to warmstart."
-    ) warmstart_backend_start_values(m)
-end
 
-@testset "Ipopt warmstarts" begin
-    # Solve base problem
-    m = InfiniteModel(ExaTranscriptionBackend(IpoptSolver))
-    @infinite_parameter(m, t in [0, 1], num_supports = 5)
-    @infinite_parameter(m, x in [-1, 1], num_supports = 5)
-    @variable(m, y >= 0, Infinite(t, x))
-    @variable(m, z, start = 10)
-    @objective(m, Min, ∫(∫(y^2, t) + 2z, x))
-    @constraint(m, ∂(y, t) == sin(y) + z + 1.2)
-    @constraint(m, y + z <= 42 + t)
     # Try to warmstart without any results
     @test_logs (
         :warn,
         "No previous solution values found. Unable to warmstart backend."
         ) warmstart_backend_start_values(m)
     output = @capture_out result = optimize!(m)
+
+    # Check the results
     etb = InfiniteOpt.transformation_backend(m)
     result1 = etb.results
     @test occursin("This is Ipopt version", output)
@@ -237,6 +183,8 @@ end
     expected[1] = 10.0
     model = InfiniteOpt.transformation_model(m)
     @test NLPModels.get_x0(model) == expected
+
+    # Warmstart now that results are available
     warmstart_backend_start_values(m)
     @test etb.options[:x0] == result1.solution
     @test etb.options[:y0] == result1.multipliers
@@ -248,16 +196,19 @@ end
     for key in [:x0, :y0, :zL0, :zU0]
         @test haskey(etb.prev_options, key)
     end
-    # Should converge in 4 iterations if warmstarted
+
+    # Check that warmstarting was successful
     @test occursin("Number of Iterations....: 4", output)
     @test occursin("warm_start_init_point = yes", output)
+
     # Turn off warmstarting
     set_optimizer_attribute(m, "warm_start_init_point", "no")
     output = @capture_out result = optimize!(m)
     @test etb.options[:warm_start_init_point] == "no"
     @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
     @test occursin("Number of Iterations....: 8", output)
-    # Try to warmstart with a nonsensical solver
+
+    # Try warmstarting with another solver
     mockoptimizer = () -> MOIU.MockOptimizer(MOIU.UniversalFallback(MOIU.Model{Float64}()),
                                              eval_objective_value=false)
     etb.solver = mockoptimizer

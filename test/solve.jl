@@ -127,7 +127,7 @@ end
     @test set_silent(m) isa Nothing
     @test optimize!(m).status == :first_order
     @test isapprox(obj, objective_value(m), atol = tol)
-    @test all(isapprox.(vVal, value(v), atol = 1e-4))
+    @test all(isapprox.(vVal, value(v), atol = tol))
     @test all(isapprox.(zVal, value(z), atol = tol))
 end
 

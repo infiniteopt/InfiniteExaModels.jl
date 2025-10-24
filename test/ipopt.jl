@@ -10,7 +10,7 @@ tol = 1e-6
     @constraint(m, ∂(y, t) == sin(y) + z + 1.2)
     @constraint(m, y + z <= 42 + t)
     set_silent(m)
-    etb = m.backend
+    etb = InfiniteOpt.transformation_backend(m)
     set_time_limit_sec(m, 120.0)
     @test etb.silent == true
     @test etb.time_limit == 120.0
@@ -63,7 +63,7 @@ end
     @objective(m, Min, ∫(∫(y^2, t) + 2z, x))
     @constraint(m, ∂(y, t) == sin(y) + z + 1.2)
     @constraint(m, y + z <= 42 + t)
-    etb = m.backend
+    etb = InfiniteOpt.transformation_backend(m)
     set_time_limit_sec(m, 120.0)
     @test etb.time_limit == 120.0
     set_optimizer_attribute(m, :max_iter, 50)
@@ -162,45 +162,47 @@ end
     @constraint(m, ∂(y, t) == sin(y) + z + 1.2)
     @constraint(m, y + z <= 42 + t)
     output = @capture_out result = optimize!(m)
-    result1 = m.backend.results
+    etb = InfiniteOpt.transformation_backend(m)
+    result1 = etb.results
     @test occursin("This is Ipopt version", output)
     @test occursin("Number of Iterations....: 8", output)
     @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
     expected = zeros(51)
     expected[1] = 10.0
-    @test NLPModels.get_x0(m.backend.model) == expected
+    model = InfiniteOpt.transformation_model(m)
+    @test NLPModels.get_x0(model) == expected
     warmstart_backend_start_values(m)
-    @test m.backend.options[:x0] == result1.solution
-    @test m.backend.options[:y0] == result1.multipliers
-    @test m.backend.options[:zL0] == result1.multipliers_L
-    @test m.backend.options[:zU0] == result1.multipliers_U
+    @test etb.options[:x0] == result1.solution
+    @test etb.options[:y0] == result1.multipliers
+    @test etb.options[:zL0] == result1.multipliers_L
+    @test etb.options[:zU0] == result1.multipliers_U
     set_optimizer_attribute(m, "print_user_options", "yes")
     output = @capture_out result = optimize!(m)
     @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
     for key in [:x0, :y0, :zL0, :zU0]
-        @test haskey(m.backend.prev_options, key)
+        @test haskey(etb.prev_options, key)
     end
     # Should converge in 4 iterations if warmstarted
     @test occursin("Number of Iterations....: 4", output)
     @test occursin("warm_start_init_point = yes", output)
     # Reset the solution & turn off warmstarting
-    m.backend.results = nothing
+    etb.results = nothing
     set_optimizer_attribute(m, "warm_start_init_point", "no")
     @test_logs (
         :warn,
         "No previous solution values found. Unable to warmstart backend."
         ) warmstart_backend_start_values(m)
     output = @capture_out result = optimize!(m)
-    @test m.backend.options[:warm_start_init_point] == "no"
+    @test etb.options[:warm_start_init_point] == "no"
     for key in [:x0, :y0, :zL0, :zU0]
-        @test !haskey(m.backend.prev_options, key)
+        @test !haskey(etb.prev_options, key)
     end
     @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
     @test occursin("Number of Iterations....: 8", output)
     # Try to warmstart with a nonsensical solver
     mockoptimizer = () -> MOIU.MockOptimizer(MOIU.UniversalFallback(MOIU.Model{Float64}()),
                                              eval_objective_value=false)
-    m.backend.solver = mockoptimizer
+    etb.solver = mockoptimizer
     @test_logs (
     :warn,
     "Unsupported solver type $(typeof(mockoptimizer)). Unable to warmstart."

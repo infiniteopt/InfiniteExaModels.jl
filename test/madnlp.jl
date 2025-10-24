@@ -41,20 +41,18 @@ tol = 1e-6
     @test isapprox(objective_value(m), -1.2784599867885884e+01, atol=tol)
     @test etb.solver.opt.max_iter == 50
     @test etb.solver.opt.mu_init == 1e-2
-    @test etb.options ==
-        Dict(
-            :solver   => MadNLPSolver,
-            :max_iter => 50,
-            :mu_init  => 1e-2,
-            :tol      => 1e-6,
+    @test etb.options == Dict(
+        :solver   => MadNLPSolver,
+        :max_iter => 50,
+        :mu_init  => 1e-2,
+        :tol      => 1e-6,
         )
-    @test etb.prev_options == 
-        Dict(
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
-            :print_level => MadNLP.INFO,
-            :max_wall_time => 200.0,
+    @test etb.prev_options == Dict(
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
+        :print_level => MadNLP.INFO,
+        :max_wall_time => 200.0,
         )
     @test etb.solver.logger.print_level == MadNLP.INFO
 end
@@ -82,19 +80,17 @@ end
     @test etb.solver.opt.mu_init == 1e-2  # MadNLP default
     @test etb.solver.opt.max_wall_time == etb.time_limit
     @test !isempty(etb.prev_options)
-    @test etb.options == 
-        Dict(
-            :solver => MadNLPSolver,
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
+    @test etb.options == Dict(
+        :solver => MadNLPSolver,
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
         )
-    @test etb.prev_options == 
-        Dict(
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
-            :max_wall_time => 120.0
+    @test etb.prev_options == Dict(
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
+        :max_wall_time => 120.0
         )
     @test !isnothing(etb.results)
 
@@ -107,15 +103,20 @@ end
     @test (output = @capture_out results = optimize!(m)) == "The options set during resolve may not have an effect\n"
     @test isapprox(objective_value(m), -1.2784599867885884e+01, atol=tol)
     prev = etb.prev_options
-    @test prev == Dict(:print_level => MadNLP.WARN, :max_wall_time => 1.0E6)
+    @test prev == Dict(
+        :print_level => MadNLP.WARN,
+        :max_wall_time => 1.0E6,
+        :max_iter => 50,
+        :tol => 1e-6,
+        :mu_init => 1e-2
+        )
     @test etb.solver.logger.print_level == MadNLP.WARN
-    @test etb.options ==
-        Dict(
-            :solver => MadNLPSolver,
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
-            :print_level => MadNLP.WARN,
+    @test etb.options == Dict(
+        :solver => MadNLPSolver,
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
+        :print_level => MadNLP.WARN,
         )
 
     # Set silent mode and time limit
@@ -126,37 +127,37 @@ end
     @test (output = @capture_out optimize!(m)) == ""
     @test isapprox(objective_value(m), -1.2784599867885884e+01, atol=tol)
     @test etb.solver.logger.print_level == MadNLP.ERROR
-    @test etb.options ==
-        Dict(
-            :solver => MadNLPSolver,
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
-            :print_level => MadNLP.WARN,
+    @test etb.options == Dict(
+        :solver => MadNLPSolver,
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
+        :print_level => MadNLP.WARN,
         )
-    @test etb.prev_options ==
-        Dict(
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
-            :max_wall_time => 150.0,
-            :print_level => MadNLP.ERROR,
+    @test etb.prev_options == Dict(
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
+        :max_wall_time => 150.0,
+        :print_level => MadNLP.ERROR,
         )
     # Restore previous print level after unsetting silent
     unset_silent(m)
     output = @capture_out result = optimize!(m)
     @test occursin("The options set during resolve may not have an effect\n", output)
-    @test etb.options ==
-        Dict(
-            :solver => MadNLPSolver,
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
-            :print_level => MadNLP.WARN,
+    @test etb.options == Dict(
+        :solver => MadNLPSolver,
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
+        :print_level => MadNLP.WARN,
         )
-    @test etb.prev_options ==
-        Dict(
-            :print_level => MadNLP.WARN,
+    @test etb.prev_options == Dict(
+        :print_level => MadNLP.WARN,
+        :max_wall_time => 150,
+        :max_iter => 50,
+        :tol => 1e-6,
+        :mu_init => 1e-2
         )
 end
 

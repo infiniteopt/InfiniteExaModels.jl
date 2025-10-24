@@ -113,7 +113,7 @@ end
     @parameter_function(m, pf2 == (t, s) -> paramFunc2(t, s, ti))
     @constraint(m, c1, v + pf ≤ 100)
     @constraint(m, c2, v*2 + pf*pf2 ≤ 100)
-    @constraint(m, c3, v ≥ 0.5*pf2)
+    @constraint(m, c3, v ≥ 0.2*pf2)
     @constraint(m, c4, z(t, 2.5) + pf2*pf ≤ 40)    # Test semi-infinite variable in constraint
     @constraint(m, c5, v*∫(pf2, s) ≤ 100)   # Test semi-infinite param func in measure
     @objective(m, Min, ∫(v*pf, t) + ∫(∫(0.5*z*pf2, t), s))

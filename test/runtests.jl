@@ -6,10 +6,10 @@ println("************************************************")
 println("                BEGINNING TESTS                 ")
 println("************************************************\n")
 
-@testset "Transcription Backend" begin include("transcription.jl") end
-@testset "Solve Tests" begin include("solve.jl") end
-@testset "InfiniteExaModelsMadNLP" begin include("madnlp.jl") end
-@testset "InfiniteExaModelsIpopt" begin include("ipopt.jl") end
+@time @testset "Transcription Backend" begin include("transcription.jl") end
+@time @testset "Solve Tests" begin include("solve.jl") end
+@time @testset "InfiniteExaModelsMadNLP" begin include("madnlp.jl") end
+@time @testset "InfiniteExaModelsIpopt" begin include("ipopt.jl") end
 
 # TODO add more tests
 

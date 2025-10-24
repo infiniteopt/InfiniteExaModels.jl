@@ -36,20 +36,18 @@ tol = 1e-6
     output = @capture_out results = optimize!(m)
     @test occursin("This is Ipopt version", output)  
     @test isapprox(objective_value(m), -1.2784599867885884e+01, atol=tol)
-    @test etb.options ==
-        Dict(
-            :solver   => IpoptSolver,
-            :max_iter => 50,
-            :mu_init  => 1e-2,
-            :tol      => 1e-6,
+    @test etb.options == Dict(
+        :solver   => IpoptSolver,
+        :max_iter => 50,
+        :mu_init  => 1e-2,
+        :tol      => 1e-6,
         )
-    @test etb.prev_options ==
-        Dict(
-            :max_iter      => 50,
-            :mu_init       => 1e-2,
-            :tol           => 1e-6,
-            :print_level   => 5,
-            :max_wall_time => 200.0,
+    @test etb.prev_options == Dict(
+        :max_iter      => 50,
+        :mu_init       => 1e-2,
+        :tol           => 1e-6,
+        :print_level   => 5,
+        :max_wall_time => 200.0,
         )
 end
 
@@ -73,19 +71,17 @@ end
     @test occursin("This is Ipopt version", output)
     @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
     @test !isempty(etb.prev_options)
-    @test etb.options == 
-        Dict(
-            :solver => IpoptSolver,
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
+    @test etb.options == Dict(
+        :solver => IpoptSolver,
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
         )
-    @test etb.prev_options == 
-        Dict(
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
-            :max_wall_time => 120.0
+    @test etb.prev_options == Dict(
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
+        :max_wall_time => 120.0
         )
     @test !isnothing(etb.results)
 
@@ -99,14 +95,19 @@ end
     @test occursin("Total number of variables", output)
     @test isapprox(objective_value(m), -1.2784599867885884e+01, atol=tol)
     prev = etb.prev_options
-    @test prev == Dict(:print_level => 3, :max_wall_time => 1.0e20)
-    @test etb.options ==
-        Dict(
-            :solver => IpoptSolver,
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
-            :print_level => 3,
+    @test prev == Dict(
+        :print_level => 3,
+        :max_wall_time => 1.0e20,
+        :tol => 1e-6,
+        :mu_init => 1e-2,
+        :max_iter => 50
+        )
+    @test etb.options == Dict(
+        :solver => IpoptSolver,
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
+        :print_level => 3,
         )
 
     # Set silent mode and time limit
@@ -116,37 +117,37 @@ end
     @test etb.time_limit == 150.0
     @test (output = @capture_out optimize!(m)) == ""
     @test isapprox(objective_value(m), -1.2784599867885884e+01, atol=tol)
-    @test etb.options ==
-        Dict(
-            :solver => IpoptSolver,
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
-            :print_level => 3,
+    @test etb.options == Dict(
+        :solver => IpoptSolver,
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
+        :print_level => 3,
         )
-    @test etb.prev_options ==
-        Dict(
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
-            :max_wall_time => 150.0,
-            :print_level => 0,
+    @test etb.prev_options == Dict(
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
+        :max_wall_time => 150.0,
+        :print_level => 0,
         )
 
     # Restore previous print level after unsetting silent
     unset_silent(m)
     output = @capture_out result = optimize!(m)
     @test occursin("Total number of variables", output)
-    @test etb.options ==
-        Dict(
-            :solver => IpoptSolver,
-            :max_iter => 50,
-            :mu_init => 1e-2,
-            :tol => 1e-6,
-            :print_level => 3,
+    @test etb.options == Dict(
+        :solver => IpoptSolver,
+        :max_iter => 50,
+        :mu_init => 1e-2,
+        :tol => 1e-6,
+        :print_level => 3,
         )
-    @test etb.prev_options ==
-        Dict(
-            :print_level => 3,
+    @test etb.prev_options == Dict(
+        :print_level => 3,
+        :max_wall_time => 150,
+        :tol => 1e-6,
+        :mu_init => 1e-2,
+        :max_iter => 50
         )
 end

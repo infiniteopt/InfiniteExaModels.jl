@@ -54,7 +54,8 @@ end
 function InfiniteExaModels.resolve(
     solver::MadNLP.MadNLPSolver,
     backend,
-    options
+    options;
+    kwargs...
     )
     sol_options = _process_options(options, backend)
     # Update solver logger print level (for resolves)
@@ -62,6 +63,15 @@ function InfiniteExaModels.resolve(
         backend.solver.logger.print_level = sol_options[:print_level]
     end
     return MadNLP.solve!(backend.model, solver; sol_options...)
+end
+
+function InfiniteExaModels.warmstart_backend(
+    backend::InfiniteExaModels.ExaTranscriptionBackend,
+    solver::MadNLP.MadNLPSolver
+    )
+    results = backend.results
+    copyto!(NLPModels.get_x0(backend.model), results.solution)
+    return
 end
 
 # Standard JSO statuses to MOI.TerminationStatusCode

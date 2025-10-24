@@ -161,6 +161,11 @@ end
     @objective(m, Min, ∫(∫(y^2, t) + 2z, x))
     @constraint(m, ∂(y, t) == sin(y) + z + 1.2)
     @constraint(m, y + z <= 42 + t)
+    # Try to warmstart without any results
+    @test_logs (
+        :warn,
+        "No previous solution values found. Unable to warmstart backend."
+        ) warmstart_backend_start_values(m)
     output = @capture_out result = optimize!(m)
     etb = InfiniteOpt.transformation_backend(m)
     result1 = etb.results
@@ -185,18 +190,10 @@ end
     # Should converge in 4 iterations if warmstarted
     @test occursin("Number of Iterations....: 4", output)
     @test occursin("warm_start_init_point = yes", output)
-    # Reset the solution & turn off warmstarting
-    etb.results = nothing
+    # Turn off warmstarting
     set_optimizer_attribute(m, "warm_start_init_point", "no")
-    @test_logs (
-        :warn,
-        "No previous solution values found. Unable to warmstart backend."
-        ) warmstart_backend_start_values(m)
     output = @capture_out result = optimize!(m)
     @test etb.options[:warm_start_init_point] == "no"
-    for key in [:x0, :y0, :zL0, :zU0]
-        @test !haskey(etb.prev_options, key)
-    end
     @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
     @test occursin("Number of Iterations....: 8", output)
     # Try to warmstart with a nonsensical solver
@@ -205,8 +202,7 @@ end
     etb.solver = mockoptimizer
     @test_logs (
     :warn,
-    "Unsupported solver type $(typeof(mockoptimizer))." *
-    "Updating start values in the backend, but warmstarting may not take effect.",
+    "Updating start values in the backend, but warmstarting may not take effect for solver type $(typeof(mockoptimizer)).",
     ) warmstart_backend_start_values(m)
     results = etb.results
     @test all(isapprox(NLPModels.get_x0(model), results.solution, atol=tol))

@@ -523,8 +523,7 @@ function warmstart_backend(
     backend::ExaTranscriptionBackend,
     solver
     )
-    @warn("Unsupported solver type $(typeof(solver))." *
-        "Updating start values in the backend, but warmstarting may not take effect.")
+    @warn("Updating start values in the backend, but warmstarting may not take effect for solver type $(typeof(solver)).")
     results = backend.results
     copyto!(NLPModels.get_x0(backend.model), results.solution)
     copyto!(NLPModels.get_y0(backend.model), results.multipliers)

@@ -25,7 +25,6 @@ function _process_options(options, backend)
         # If previously silent & not otherwise specified, restore to default time limit
         new_options[:max_wall_time] = 1.0E6
     end
-
     # Save updated options for more potential resolves
     backend.prev_options = new_options
     return new_options
@@ -55,15 +54,6 @@ function InfiniteExaModels.resolve(
         backend.solver.logger.print_level = sol_options[:print_level]
     end
     return MadNLP.solve!(backend.model, solver; sol_options...)
-end
-
-function InfiniteExaModels.warmstart_backend(
-    backend::InfiniteExaModels.ExaTranscriptionBackend,
-    solver::MadNLP.MadNLPSolver
-    )
-    results = backend.results
-    copyto!(NLPModels.get_x0(backend.model), results.solution)
-    return
 end
 
 # Standard JSO statuses to MOI.TerminationStatusCode

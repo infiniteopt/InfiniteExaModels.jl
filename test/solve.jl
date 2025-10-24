@@ -15,6 +15,7 @@ tol = 1E-6
     obj = objective_value(m)
     yval = value(y)
     zval = value(z)
+    dyval = value(∂(y, t))
     # test with ExaTranscriptionBackend
     @test set_transformation_backend(m, ExaTranscriptionBackend(IpoptSolver)) isa Nothing
     @test set_silent(m) isa Nothing
@@ -22,6 +23,7 @@ tol = 1E-6
     @test isapprox(obj, objective_value(m), atol = tol)
     @test all(isapprox.(yval, value(y), atol = tol))
     @test isapprox.(zval, value(z), atol = tol)
+    @test isapprox(dyval, value(∂(y, t)), atol=tol)
     # Test Orthogonal Collocation
     set_derivative_method(t, OrthogonalCollocation(3))
     set_transformation_backend(m, TranscriptionBackend(Ipopt.Optimizer))
@@ -32,12 +34,14 @@ tol = 1E-6
     obj = objective_value(m)
     yval = value(y)
     zval = value(z)
+    dyval = value(∂(y, t))
     @test set_transformation_backend(m, ExaTranscriptionBackend(IpoptSolver)) isa Nothing
     @test set_silent(m) isa Nothing
     @test optimize!(m).status == :first_order 
     @test isapprox(obj, objective_value(m), atol = tol)
     @test all(isapprox.(yval, value(y), atol = tol))
     @test isapprox.(zval, value(z), atol = tol)
+    @test isapprox(dyval, value(∂(y, t)), atol=tol)
 end
 
 @testset "Test Problem 2" begin
@@ -188,6 +192,9 @@ end
     em = m.backend.model
     @test em.θ[param1.offset+1:param1.offset+param1.length] == expectedpf1
     @test em.θ[param2.offset+1:param2.offset+param2.length] == expectedpf2
+    # Test value queries
+    @test value(pf1) == expectedpf1
+    @test reshape(value(pf2), 9) == expectedpf2
     # Update parameter functions
     set_parameter_value(pf1, cos)
     set_parameter_value(pf2, newpf2)
@@ -197,4 +204,7 @@ end
     @test em.θ[param2.offset+1:param2.offset+param2.length] == expectedpf2
     optimize!(m)
     @test isapprox(objective_value(m), 0.8155916466182952, atol=tol)
+    @test value(pf1) == expectedpf1
+    @test reshape(value(pf2), 9) == expectedpf2
+
 end

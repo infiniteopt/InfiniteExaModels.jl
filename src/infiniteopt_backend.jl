@@ -421,10 +421,34 @@ function InfiniteOpt.map_value(
     backend::ExaTranscriptionBackend;
     label::DataType = InfiniteOpt.PublicLabel
     )
+    return _map_value(vref, vref.index_type, backend; label=label)
+end
+
+function _map_value(
+    vref::InfiniteOpt.GeneralVariableRef,
+    idx::Type{T},
+    backend::ExaTranscriptionBackend;
+    label::DataType = InfiniteOpt.PublicLabel
+    ) where {T <: InfiniteOpt.ObjectIndex}
     _check_results_available(backend)
     var = InfiniteOpt.transformation_variable(vref, backend)
     vals = ExaModels.solution(backend.results, var)
     return _label_filter(vals, vref, label, backend.data)
+end
+
+function _map_value(
+    vref::InfiniteOpt.GeneralVariableRef,
+    idx::Type{T},
+    backend::ExaTranscriptionBackend;
+    label::DataType = InfiniteOpt.PublicLabel
+    ) where {T <: Union{InfiniteOpt.FiniteParameterIndex, InfiniteOpt.ParameterFunctionIndex}}
+    model = backend.model
+    var = InfiniteOpt.transformation_variable(vref, backend)
+    o = var.offset
+    len = var.length
+    s = var.size
+    vals = reshape(view(model.θ, (o+1):(o+len)), s...)
+    return vals
 end
 
 # TODO find a way to support expressions/constraints

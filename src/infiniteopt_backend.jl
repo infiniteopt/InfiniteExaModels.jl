@@ -535,7 +535,7 @@ function InfiniteOpt.warmstart_backend_start_values(
     if !isnothing(backend.results)
         return warmstart_backend(backend, backend.solver)
     else
-        @warn("No previous solution values found to warmstart the backend.")
+        @warn("No previous solution values found. Unable to warmstart backend.")
         return
     end
 end

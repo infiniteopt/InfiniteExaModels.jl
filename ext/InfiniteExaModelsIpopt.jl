@@ -27,11 +27,11 @@ function _process_options(options, backend)
     end
     # Turn off warmstart
     if get(new_options, :warm_start_init_point, false) == "no"
-        # Disable warmstarting
-        delete!(backend.options, :x0)
-        delete!(backend.options, :y0)
-        delete!(backend.options, :zL0)
-        delete!(backend.options, :zU0)
+        # Ensure no warmstarts are passed to solver
+        delete!(new_options, :x0)
+        delete!(new_options, :y0)
+        delete!(new_options, :zL0)
+        delete!(new_options, :zU0)
     end
     # Save updated options for more potential resolves
     backend.prev_options = new_options

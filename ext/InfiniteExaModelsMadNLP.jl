@@ -54,8 +54,7 @@ end
 function InfiniteExaModels.resolve(
     solver::MadNLP.MadNLPSolver,
     backend,
-    options;
-    kwargs...
+    options
     )
     sol_options = _process_options(options, backend)
     # Update solver logger print level (for resolves)

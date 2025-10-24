@@ -205,6 +205,10 @@ end
     etb.solver = mockoptimizer
     @test_logs (
     :warn,
-    "Unsupported solver type $(typeof(mockoptimizer)). Unable to warmstart."
+    "Unsupported solver type $(typeof(mockoptimizer))." *
+    "Updating start values in the backend, but warmstarting may not take effect.",
     ) warmstart_backend_start_values(m)
+    results = etb.results
+    @test all(isapprox(NLPModels.get_x0(model), results.solution, atol=tol))
+    @test all(isapprox(NLPModels.get_y0(model), results.multipliers, atol = tol))
 end

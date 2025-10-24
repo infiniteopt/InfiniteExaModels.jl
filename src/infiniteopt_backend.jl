@@ -447,8 +447,7 @@ function _map_value(
     o = var.offset
     len = var.length
     s = var.size
-    vals = reshape(view(model.θ, (o+1):(o+len)), s...)
-    return vals
+    return reshape(view(model.θ, (o+1):(o+len)), s...)
 end
 
 # TODO find a way to support expressions/constraints
@@ -485,7 +484,7 @@ function InfiniteOpt.update_parameter_value(
     pref::InfiniteOpt.FiniteParameterRef,
     value::Real
     )
-    data = backend.data
+    data = InfiniteOpt.transformation_data(backend)
     core = backend.core
     pref = InfiniteOpt.GeneralVariableRef(pref)
     # Check if the mapping exists
@@ -493,7 +492,7 @@ function InfiniteOpt.update_parameter_value(
     # Update the value in the ExaCore, which updates the ExaModel too
     ExaModels.set_parameter!(
         core,
-        data.param_mappings[pref],
+        InfiniteOpt.transformation_variable(pref),
         [value]
     )
     return true
@@ -505,7 +504,7 @@ function InfiniteOpt.update_parameter_value(
     pfref::InfiniteOpt.ParameterFunctionRef,
     value::Function
     )
-    data = backend.data
+    data = InfiniteOpt.transformation_data(backend)
     core = backend.core
     supps = InfiniteOpt.variable_supports(pfref, backend; label = InfiniteOpt.All)
     pfref = InfiniteOpt.GeneralVariableRef(pfref)
@@ -514,7 +513,7 @@ function InfiniteOpt.update_parameter_value(
     # Generate the new parameter function values
     vals = map(supp -> value(supp...), supps)
     # Update the values in the ExaCore, which updates the ExaModel too
-    param = data.param_mappings[pfref]
+    param = InfiniteOpt.transformation_variable(pfref)
     ExaModels.set_parameter!(core, param, vals)
     return true
 end
@@ -524,7 +523,11 @@ function warmstart_backend(
     backend::ExaTranscriptionBackend,
     solver
     )
-    @warn("Unsupported solver type $(typeof(solver)). Unable to warmstart.")
+    @warn("Unsupported solver type $(typeof(solver))." *
+        "Updating start values in the backend, but warmstarting may not take effect.")
+    results = backend.results
+    copyto!(NLPModels.get_x0(backend.model), results.solution)
+    copyto!(NLPModels.get_y0(backend.model), results.multipliers)
     return
 end
 

@@ -189,7 +189,7 @@ end
     param2 = transformation_variable(pf2)
     expectedpf1 = sin.([0.0, 0.5, 1.0])
     expectedpf2 = [0.2, 1.158851077208406, 1.882941969615793, 0.2, 1.3985638465105075, 2.3036774620197416, 0.2, 1.638276615812609, 2.7244129544236895]
-    em = m.backend.model
+    em = InfiniteOpt.transformation_model(m)
     @test em.θ[param1.offset+1:param1.offset+param1.length] == expectedpf1
     @test em.θ[param2.offset+1:param2.offset+param2.length] == expectedpf2
     # Test value queries
@@ -206,5 +206,4 @@ end
     @test isapprox(objective_value(m), 0.8155916466182952, atol=tol)
     @test value(pf1) == expectedpf1
     @test reshape(value(pf2), 9) == expectedpf2
-
 end

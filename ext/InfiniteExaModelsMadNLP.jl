@@ -1,6 +1,6 @@
 module InfiniteExaModelsMadNLP
 
-import InfiniteExaModels, MadNLP, SolverCore
+import InfiniteExaModels, MadNLP, SolverCore, NLPModels
 import MathOptInterface as _MOI
 
 const _DefaultWallTime = 1.0E6

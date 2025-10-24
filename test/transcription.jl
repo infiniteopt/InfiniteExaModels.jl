@@ -9,18 +9,19 @@
 
     # Build the ExaModel backend
     build_transformation_backend!(model, model.backend)
-    exaBackend = model.backend
-    exaData = exaBackend.data
-    exaModel = exaBackend.model
-
+    exaBackend = InfiniteOpt.transformation_backend(model)
+    @test exaBackend.core isa ExaModels.ExaCore
+    exaModel = InfiniteOpt.transformation_model(model)
+    exaData = InfiniteOpt.transformation_data(exaBackend)
+    
     # Test finite parameter mappings
-    @test length(keys(exaBackend.data.param_mappings)) == 3
+    @test length(keys(exaData.param_mappings)) == 3
     @test InfiniteExaModels._check_mapping(x, exaBackend) === nothing
     @test InfiniteExaModels._check_mapping(y[1], exaBackend) === nothing
     @test InfiniteExaModels._check_mapping(y[2], exaBackend) === nothing
-    xMapping = exaBackend.data.param_mappings[x]
-    y1Mapping = exaBackend.data.param_mappings[y[1]]
-    y2Mapping = exaBackend.data.param_mappings[y[2]]
+    xMapping = exaData.param_mappings[x]
+    y1Mapping = exaData.param_mappings[y[1]]
+    y2Mapping = exaData.param_mappings[y[2]]
     @test xMapping isa ExaModels.Parameter{Tuple{Int}, Int}
     @test y1Mapping isa ExaModels.Parameter{Tuple{Int}, Int}
     @test y2Mapping isa ExaModels.Parameter{Tuple{Int}, Int}
@@ -50,9 +51,9 @@ end
 
     # Build the ExaModel backend
     build_transformation_backend!(model, model.backend)
-    exaBackend = model.backend
-    exaData = exaBackend.data
-    exaModel = exaBackend.model
+    exaBackend = InfiniteOpt.transformation_backend(model)
+    exaData = InfiniteOpt.transformation_data(exaBackend)
+    exaModel = InfiniteOpt.transformation_model(model)
 
     # Test parameter function mappings (single infinite parameter)
     @test !isempty(exaData.param_mappings)

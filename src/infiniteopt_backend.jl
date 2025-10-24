@@ -52,6 +52,7 @@ end
 
 """
 mutable struct ExaTranscriptionBackend{B} <: InfiniteOpt.AbstractTransformationBackend
+    core::Union{Nothing, ExaModels.ExaCore}
     model::Union{Nothing, ExaModels.ExaModel}
     backend::B
     solver::Any
@@ -69,6 +70,7 @@ end
 """
 function ExaTranscriptionBackend(; backend = nothing)
     return ExaTranscriptionBackend(
+        nothing,
         nothing,
         backend,
         nothing,
@@ -107,8 +109,8 @@ function InfiniteOpt.build_transformation_backend!(
     backend::ExaTranscriptionBackend
     )
     empty!(backend)
-    backend.model = ExaModels.ExaModel(model, backend.data; backend = backend.backend)
-    return
+    backend.core = ExaModels.ExaCore(model, backend.data; backend = backend.backend)
+    backend.model = ExaModels.ExaModel(backend.core)
 end
 
 ## Solver settings
@@ -419,10 +421,33 @@ function InfiniteOpt.map_value(
     backend::ExaTranscriptionBackend;
     label::DataType = InfiniteOpt.PublicLabel
     )
+    return _map_value(vref, vref.index_type, backend; label=label)
+end
+
+function _map_value(
+    vref::InfiniteOpt.GeneralVariableRef,
+    idx::Type{T},
+    backend::ExaTranscriptionBackend;
+    label::DataType = InfiniteOpt.PublicLabel
+    ) where {T <: InfiniteOpt.ObjectIndex}
     _check_results_available(backend)
     var = InfiniteOpt.transformation_variable(vref, backend)
     vals = ExaModels.solution(backend.results, var)
     return _label_filter(vals, vref, label, backend.data)
+end
+
+function _map_value(
+    vref::InfiniteOpt.GeneralVariableRef,
+    idx::Type{T},
+    backend::ExaTranscriptionBackend;
+    label::DataType = InfiniteOpt.PublicLabel
+    ) where {T <: Union{InfiniteOpt.FiniteParameterIndex, InfiniteOpt.ParameterFunctionIndex}}
+    model = backend.model
+    var = InfiniteOpt.transformation_variable(vref, backend)
+    o = var.offset
+    len = var.length
+    s = var.size
+    return reshape(view(model.θ, (o+1):(o+len)), s...)
 end
 
 # TODO find a way to support expressions/constraints
@@ -453,4 +478,66 @@ function InfiniteOpt.map_dual(
     return _label_filter(duals, cref, label, backend.data)
 end
 
+# For updating parameters
+function InfiniteOpt.update_parameter_value(
+    backend::ExaTranscriptionBackend,
+    pref::InfiniteOpt.FiniteParameterRef,
+    value::Real
+    )
+    data = InfiniteOpt.transformation_data(backend)
+    core = backend.core
+    pref = InfiniteOpt.GeneralVariableRef(pref)
+    # Check if the mapping exists
+    haskey(data.param_mappings, pref) || return false
+    # Update the value in the ExaCore, which updates the ExaModel too
+    ExaModels.set_parameter!(
+        core,
+        InfiniteOpt.transformation_variable(pref),
+        [value]
+    )
+    return true
+end
+
+# For updating parameter functions
+function InfiniteOpt.update_parameter_value(
+    backend::ExaTranscriptionBackend,
+    pfref::InfiniteOpt.ParameterFunctionRef,
+    value::Function
+    )
+    data = InfiniteOpt.transformation_data(backend)
+    core = backend.core
+    supps = InfiniteOpt.variable_supports(pfref, backend; label = InfiniteOpt.All)
+    pfref = InfiniteOpt.GeneralVariableRef(pfref)
+    # Check if the mapping exists
+    haskey(data.param_mappings, pfref) || return false
+    # Generate the new parameter function values
+    vals = map(supp -> value(supp...), supps)
+    # Update the values in the ExaCore, which updates the ExaModel too
+    param = InfiniteOpt.transformation_variable(pfref)
+    ExaModels.set_parameter!(core, param, vals)
+    return true
+end
+
+# Fallback for unrecognized solver
+function warmstart_backend(
+    backend::ExaTranscriptionBackend,
+    solver
+    )
+    results = backend.results
+    copyto!(NLPModels.get_x0(backend.model), results.solution)
+    copyto!(NLPModels.get_y0(backend.model), results.multipliers)
+    return
+end
+
+function InfiniteOpt.warmstart_backend_start_values(
+    backend::ExaTranscriptionBackend;
+    kwargs...
+    )
+    if !isnothing(backend.results)
+        return warmstart_backend(backend, backend.solver; kwargs...)
+    else
+        @warn("No previous solution values found. Unable to warmstart backend.")
+        return
+    end
+end
 # TODO add map_shadow_price, map_optimizer_index, map_reduced_cost

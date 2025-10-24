@@ -1,6 +1,6 @@
 module InfiniteExaModels
 
-import InfiniteOpt, JuMP, ExaModels, SolverCore
+import InfiniteOpt, JuMP, ExaModels, SolverCore, NLPModels
 import MathOptInterface as _MOI
 import InfiniteOpt.TranscriptionOpt as _TO
 

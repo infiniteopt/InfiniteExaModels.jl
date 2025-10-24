@@ -18,7 +18,10 @@ tol = 1e-6
     @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
     @test !isempty(etb.prev_options)
     @test etb.options == Dict(:solver => IpoptSolver)
-    @test etb.prev_options == Dict(:print_level => 0, :max_wall_time => 120.0)
+    @test etb.prev_options == Dict(
+        :print_level => 0,
+        :max_wall_time => 120.0
+        )
     @test !isnothing(etb.results)
 
     # Update & add new solver options
@@ -100,7 +103,7 @@ end
         :max_wall_time => 1.0e20,
         :tol => 1e-6,
         :mu_init => 1e-2,
-        :max_iter => 50
+        :max_iter => 50,
         )
     @test etb.options == Dict(
         :solver => IpoptSolver,
@@ -150,4 +153,67 @@ end
         :mu_init => 1e-2,
         :max_iter => 50
         )
+end
+
+@testset "Ipopt warmstarts" begin
+    # Solve base problem
+    m = InfiniteModel(ExaTranscriptionBackend(IpoptSolver))
+    @infinite_parameter(m, t in [0, 1], num_supports = 5)
+    @infinite_parameter(m, x in [-1, 1], num_supports = 5)
+    @variable(m, y >= 0, Infinite(t, x))
+    @variable(m, z, start = 10)
+    @objective(m, Min, ∫(∫(y^2, t) + 2z, x))
+    @constraint(m, ∂(y, t) == sin(y) + z + 1.2)
+    @constraint(m, y + z <= 42 + t)
+
+    # Try to warmstart without any results
+    @test_logs (
+        :warn,
+        "No previous solution values found. Unable to warmstart backend."
+        ) warmstart_backend_start_values(m)
+    output = @capture_out result = optimize!(m)
+
+    # Check the results
+    etb = InfiniteOpt.transformation_backend(m)
+    result1 = etb.results
+    @test occursin("This is Ipopt version", output)
+    @test occursin("Number of Iterations....: 8", output)
+    @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
+    expected = zeros(51)
+    expected[1] = 10.0
+    model = InfiniteOpt.transformation_model(m)
+    @test NLPModels.get_x0(model) == expected
+
+    # Warmstart now that results are available
+    warmstart_backend_start_values(m)
+    @test etb.options[:x0] == result1.solution
+    @test etb.options[:y0] == result1.multipliers
+    @test etb.options[:zL0] == result1.multipliers_L
+    @test etb.options[:zU0] == result1.multipliers_U
+    set_optimizer_attribute(m, "print_user_options", "yes")
+    output = @capture_out result = optimize!(m)
+    @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
+    for key in [:x0, :y0, :zL0, :zU0]
+        @test haskey(etb.prev_options, key)
+    end
+
+    # Check that warmstarting was successful
+    @test occursin("Number of Iterations....: 4", output)
+    @test occursin("warm_start_init_point = yes", output)
+
+    # Turn off warmstarting
+    set_optimizer_attribute(m, "warm_start_init_point", "no")
+    output = @capture_out result = optimize!(m)
+    @test etb.options[:warm_start_init_point] == "no"
+    @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
+    @test occursin("Number of Iterations....: 8", output)
+
+    # Try warmstarting with another solver
+    mockoptimizer = () -> MOIU.MockOptimizer(MOIU.UniversalFallback(MOIU.Model{Float64}()),
+                                             eval_objective_value=false)
+    etb.solver = mockoptimizer
+    warmstart_backend_start_values(m)
+    results = etb.results
+    @test all(isapprox(NLPModels.get_x0(model), results.solution, atol=tol))
+    @test all(isapprox(NLPModels.get_y0(model), results.multipliers, atol = tol))
 end

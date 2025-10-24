@@ -106,9 +106,9 @@ end
     @test prev == Dict(
         :print_level => MadNLP.WARN,
         :max_wall_time => 1.0E6,
-        :max_iter => 50,
         :tol => 1e-6,
-        :mu_init => 1e-2
+        :mu_init => 1e-2,
+        :max_iter => 50,
         )
     @test etb.solver.logger.print_level == MadNLP.WARN
     @test etb.options == Dict(
@@ -141,6 +141,7 @@ end
         :max_wall_time => 150.0,
         :print_level => MadNLP.ERROR,
         )
+
     # Restore previous print level after unsetting silent
     unset_silent(m)
     output = @capture_out result = optimize!(m)
@@ -155,8 +156,47 @@ end
     @test etb.prev_options == Dict(
         :print_level => MadNLP.WARN,
         :max_wall_time => 150,
-        :max_iter => 50,
         :tol => 1e-6,
-        :mu_init => 1e-2
+        :mu_init => 1e-2,
+        :max_iter => 50
         )
+end
+
+@testset "MadNLP warmstarts" begin
+    # Solve base problem
+    m = InfiniteModel(ExaTranscriptionBackend(MadNLPSolver))
+    @infinite_parameter(m, t in [0, 1], num_supports = 5)
+    @infinite_parameter(m, x in [-1, 1], num_supports = 5)
+    @variable(m, y >= 0, Infinite(t, x))
+    @variable(m, z, start = 10)
+    @objective(m, Min, ∫(∫(y^2, t) + 2z, x))
+    @constraint(m, ∂(y, t) == sin(y) + z + 1.2)
+    @constraint(m, y + z <= 42 + t)
+
+    # Try to warmstart without any results
+    @test_logs (
+        :warn,
+        "No previous solution values found. Unable to warmstart backend."
+        ) warmstart_backend_start_values(m)
+    output = @capture_out result = optimize!(m)
+
+    # Check the results
+    etb = InfiniteOpt.transformation_backend(m)
+    result1 = etb.results
+    @test occursin("This is MadNLP version", output)
+    @test occursin("Number of Iterations....: 8", output)
+    @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
+    expected = zeros(51)
+    expected[1] = 10.0
+    model = InfiniteOpt.transformation_model(m)
+    @test NLPModels.get_x0(model) == expected
+
+    # Warmstart now that results are available
+    warmstart_backend_start_values(m)
+    @test NLPModels.get_x0(model) == result1.solution
+    @test NLPModels.get_y0(model) == result1.multipliers
+    output = @capture_out result = optimize!(m)
+    
+    # Check that warmstarting was successful
+    @test occursin("Number of Iterations....: 8", output)
 end

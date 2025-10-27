@@ -1,6 +1,6 @@
 module InfiniteExaModelsIpopt
 
-import InfiniteExaModels, NLPModelsIpopt, SolverCore, NLPModels
+import InfiniteExaModels, NLPModelsIpopt, SolverCore
 
 const _DefaultWallTime = 1.0e20
 const _DefaultPrintLevel = 5

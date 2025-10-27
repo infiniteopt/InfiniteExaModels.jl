@@ -183,8 +183,7 @@ end
     expected = zeros(51)
     expected[1] = 10.0
     @test NLPModels.get_x0(model) == expected
-    # @test NLPModels.get_y0(model) == zeros
-    println("y0 = $(length(model.meta.y0))")
+    @test NLPModels.get_y0(model) == zeros(70)
 
     # Warmstart now that results are available
     warmstart_backend_start_values(m)

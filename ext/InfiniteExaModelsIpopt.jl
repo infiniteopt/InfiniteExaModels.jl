@@ -59,18 +59,4 @@ function InfiniteExaModels.resolve(
     SolverCore.reset!(solver, backend.model)
     return SolverCore.solve!(solver, backend.model, backend.results; sol_options...)
 end
-
-function InfiniteExaModels.warmstart_backend(
-    backend::InfiniteExaModels.ExaTranscriptionBackend,
-    solver::NLPModelsIpopt.IpoptSolver
-    )
-    results = backend.results
-    options = backend.options
-    # Add to options so that these can be passed onto the solver later on
-    options[:x0] = results.solution
-    options[:y0] = results.multipliers
-    options[:zL0] = results.multipliers_L
-    options[:zU0] = results.multipliers_U
-    return
-end
 end

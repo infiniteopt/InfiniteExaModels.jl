@@ -179,34 +179,20 @@ end
     @test occursin("This is Ipopt version", output)
     @test occursin("Number of Iterations....: 8", output)
     @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
+    model = InfiniteOpt.transformation_model(m)
     expected = zeros(51)
     expected[1] = 10.0
-    model = InfiniteOpt.transformation_model(m)
     @test NLPModels.get_x0(model) == expected
+    @test NLPModels.get_y0(model) == zeros(70)
 
     # Warmstart now that results are available
     warmstart_backend_start_values(m)
-    @test etb.options[:x0] == result1.solution
-    @test etb.options[:y0] == result1.multipliers
-    @test etb.options[:zL0] == result1.multipliers_L
-    @test etb.options[:zU0] == result1.multipliers_U
-    set_optimizer_attribute(m, "print_user_options", "yes")
+    results = etb.results
+    @test NLPModels.get_x0(model) == results.solution
+    @test NLPModels.get_y0(model) == results.multipliers
     output = @capture_out result = optimize!(m)
     @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
-    for key in [:x0, :y0, :zL0, :zU0]
-        @test haskey(etb.prev_options, key)
-    end
-
-    # Check that warmstarting was successful
-    @test occursin("Number of Iterations....: 4", output)
-    @test occursin("warm_start_init_point = yes", output)
-
-    # Turn off warmstarting
-    set_optimizer_attribute(m, "warm_start_init_point", "no")
-    output = @capture_out result = optimize!(m)
-    @test etb.options[:warm_start_init_point] == "no"
-    @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
-    @test occursin("Number of Iterations....: 8", output)
+    @test occursin("Number of Iterations....: 5", output)
 
     # Try warmstarting with another solver
     mockoptimizer = () -> MOIU.MockOptimizer(MOIU.UniversalFallback(MOIU.Model{Float64}()),

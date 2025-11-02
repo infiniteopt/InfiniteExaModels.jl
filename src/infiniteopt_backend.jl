@@ -318,7 +318,8 @@ function InfiniteOpt.constraint_supports(
     filtered_supps = _label_filter(supps, cref, label, backend.data)
     if InfiniteOpt.has_domain_restriction(cref)
         restriction = InfiniteOpt.domain_restriction(cref)
-        return filter(supp -> restriction([s for e in supp for s in e]), filtered_supps)
+        group_idxs = resttriction.group_int_idxs
+        return filter(supp -> restriction([s for e in supp[group_idxs] for s in e]), filtered_supps)
     else
         return filtered_supps
     end

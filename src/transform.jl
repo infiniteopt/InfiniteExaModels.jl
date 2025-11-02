@@ -234,8 +234,8 @@ function _update_bounds_and_start(core, info, var)
         core.uvar[var.i] = isnan(info.upper_bound) ? Inf : info.upper_bound
     end
     if info.active_fix_info
-        core.lvar[var.i] = isnan(info.fix_value) ? -Inf : info.fix_value
-        core.uvar[var.i] = isnan(info.fix_value) ? Inf : info.fix_value
+        core.lvar[var.i] = isnan(info.fixed_value) ? -Inf : info.fixed_value
+        core.uvar[var.i] = isnan(info.fixed_value) ? Inf : info.fixed_value
     end
     if info.active_start_info
         core.x0[var.i] = info.start_value

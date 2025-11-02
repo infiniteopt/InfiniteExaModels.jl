@@ -9,7 +9,7 @@ tol = 1E-6
     @variable(m, z, start = 10)
     @objective(m, Min, ∫(∫(y^2, t), x) + 2y(0, 1))
     @constraint(m, ∂(y, t) == sin(y) + z + 1.2)
-    @constraint(m, y + z <= 42 + t, DomainRestrictions(t => [0, 0.5]))
+    @constraint(m, y + z <= 42 + t, DomainRestriction(s -> 0 <= s <= 0.5, t))
     @constraint(m, ∂(y(0, x), x) == 5)
     optimize!(m)
     obj = objective_value(m)

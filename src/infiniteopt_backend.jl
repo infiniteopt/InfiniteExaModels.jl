@@ -277,7 +277,6 @@ function _get_supports(ref, pref_vt, backend)
 end
 
 # Helper function to filter output array based on pref label
-# TODO this will need to be changed onced DomainRestrictions are added
 function _label_filter(arr, ref, label, data)
     # check any filtering is needed
     label == InfiniteOpt.All && return arr
@@ -287,7 +286,7 @@ function _label_filter(arr, ref, label, data)
         return arr
     end
     # filter the array based on the desired label
-    idxs = (map(s -> any(l -> l <: label, s), sets) for sets in data.support_labels)
+    idxs = (map(s -> any(l -> l <: label, s), sets) for sets in data.support_labels[group_idxs])
     return arr[idxs...]
 end
 
@@ -316,7 +315,14 @@ function InfiniteOpt.constraint_supports(
     prefs = InfiniteOpt.parameter_refs(cref)
     pref_vt = InfiniteOpt.Collections.VectorTuple(prefs)
     supps = _get_supports(cref, pref_vt, backend)
-    return _label_filter(supps, cref, label, backend.data)
+    filtered_supps = _label_filter(supps, cref, label, backend.data)
+    if InfiniteOpt.has_domain_restriction(cref)
+        restriction = InfiniteOpt.domain_restriction(cref)
+        group_idxs = resttriction.group_int_idxs
+        return filter(supp -> restriction([s for e in supp[group_idxs] for s in e]), filtered_supps)
+    else
+        return filtered_supps
+    end
 end
 
 # Check that a result is available

@@ -1,3 +1,93 @@
+@testset "Mapping Initializers" begin
+    # Setup model
+    m = InfiniteModel()
+    @infinite_parameter(m, t in [0, 1], num_supports = 5)
+    @infinite_parameter(m, x in [-1, 1], num_supports = 3, 
+                        derivative_method = OrthogonalCollocation(3))
+    @variable(m, 1 >= y >= cos, Infinite(t))
+    @variable(m, q == 42, Infinite(t, x))
+    @variable(m, 2 <= w <= sin, Infinite(x), start = cos)
+    y0 = y(0)
+    y1 = y(1)
+    set_start_value(y0, 0.5)
+    delete_lower_bound(y1)
+    set_upper_bound(y1, 0.8)
+    q0 = q(0, x)
+    q1 = q(1, x)
+    set_start_value(q0, 10)
+    fix(q1, 5)
+    d1 = deriv(y, t)
+    d2 = deriv(q, x, x)
+    @variable(m, z, start = 10)
+    c = ExaModels.ExaCore()
+    data = ExaMappingData()
+    # test building up supports
+    @testset "_build_base_iterators" begin
+        @test InfiniteExaModels._build_base_iterators(data, m) isa Nothing
+        @test length(data.base_itrs) == 2
+        @test sum(data.has_internal_supps) == 1
+    end
+    # test mapping finite variables
+    @testset "_add_finite_variables" begin
+        @test InfiniteExaModels._add_finite_variables(c, data, m) isa Nothing
+        v = ExaModels.Var(1)
+        @test data.finvar_mappings[z] == v
+        @test c.x0[v.i] == 10
+        @test c.lvar[v.i] == -Inf
+        @test c.uvar[v.i] == Inf
+    end
+    # test mapping infinite variables
+    @testset "_add_infinite_variables" begin
+        @test InfiniteExaModels._add_infinite_variables(c, data, m) isa Nothing
+        # test y variable mapping
+        yvar = data.infvar_mappings[y]
+        @test yvar.length == 5
+        @test c.lvar[yvar.offset+1:yvar.offset+5] == cos.(range(0, 1, length=5))
+        @test c.uvar[yvar.offset+1:yvar.offset+5] == ones(5)
+        # test q variable mapping
+        qvar = data.infvar_mappings[q]
+        @test qvar.length == 25
+        @test c.lvar[qvar.offset+1:qvar.offset+25] == fill(42, 25)
+        @test c.uvar[qvar.offset+1:qvar.offset+25] == fill(42, 25)
+        # test w variable mapping
+        wvar = data.infvar_mappings[w]
+        @test wvar.length == 5
+        @test c.lvar[wvar.offset+1:wvar.offset+5] == fill(2, 5)
+        @test c.uvar[wvar.offset+1:wvar.offset+5] == sin.(range(-1, 1, length=5))
+        @test c.x0[wvar.offset+1:wvar.offset+5] == cos.(range(-1, 1, length=5))
+        # test derivative mappings
+        d1var = data.infvar_mappings[d1]
+        @test d1var.length == 5
+        @test data.infvar_mappings[d2].length == 25
+        @test num_derivatives(m) == 3
+    end
+    # test semi-infinite variable mappings
+    @testset "_add_semi_infinite_variables" begin
+        @test InfiniteExaModels._add_semi_infinite_variables(c, data, m) isa Nothing
+        @test length(data.semivar_info) == 2
+        # test q0 variable mapping
+        qvar = data.infvar_mappings[q]
+        @test c.x0[qvar[1, 2].i] == 10
+        # test q1 variable mapping
+        @test c.lvar[qvar[5, 3].i] == 5
+        @test c.uvar[qvar[5, 4].i] == 5
+        @test c.x0[qvar[5, 2].i] == 0
+    end
+    # test point variable mappings
+    @testset "_add_point_variables" begin
+        @test InfiniteExaModels._add_point_variables(c, data, m) isa Nothing
+        @test length(data.finvar_mappings) == 3
+        # test y0 variable mapping
+        yvar = data.finvar_mappings[y0]
+        @test c.x0[yvar.i] == 0.5
+        @test c.lvar[yvar.i] == cos(0)
+        # test y1 variable mapping
+        yvar = data.finvar_mappings[y1]
+        @test c.lvar[yvar.i] == -Inf
+        @test c.uvar[yvar.i] == 0.8
+    end
+end
+
 @testset "Finite Parameters" begin
     # Set up an InfiniteModel with finite parameters
     yVals = [20, 30]

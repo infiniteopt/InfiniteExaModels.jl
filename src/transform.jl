@@ -137,23 +137,8 @@ function _add_infinite_variables(
     )
     # Get the raw variables
     ivrefs = JuMP.all_variables(inf_model, InfiniteOpt.InfiniteVariable)
+    InfiniteOpt.reformulate_high_order_derivatives!(inf_model)
     drefs = InfiniteOpt.all_derivatives(inf_model)
-    # process lower order derivatives first if needed
-    for dref in drefs
-        var = InfiniteOpt.core_object(dref)
-        method = InfiniteOpt.derivative_method(dref)
-        if !InfiniteOpt.allows_high_order_derivatives(method) && var.order > 1
-            for o in var.order-1:-1:1
-                if !haskey(inf_model.deriv_lookup, (var.variable_ref, var.parameter_ref, o))
-                    info = InfiniteOpt._DefaultDerivativeInfo
-                    new_d = InfiniteOpt.Derivative(info, var.variable_ref, var.parameter_ref, o)
-                    # TODO: avoid changing the InfiniteModel
-                    new_dref = InfiniteOpt.add_derivative(inf_model, new_d)
-                    push!(ivrefs, new_dref)
-                end
-            end
-        end
-    end
     # now process and add each infinite variable
     for vref in append!(ivrefs, drefs)
         # retrieve basic information
@@ -531,11 +516,6 @@ function _add_derivative_approximations(
         pref = InfiniteOpt.operator_parameter(dref)
         order = InfiniteOpt.derivative_order(dref)
         method = InfiniteOpt.derivative_method(dref)
-        # take care of derivative nesting if appropriate
-        if !InfiniteOpt.allows_high_order_derivatives(method) && order > 1
-            d_idx = inf_model.deriv_lookup[vref, pref, order - 1]
-            vref = InfiniteOpt.GeneralVariableRef(inf_model, d_idx)
-        end
         # gather the needed infinite parameter data
         group_idxs = InfiniteOpt.parameter_group_int_indices(vref)
         pref_group = InfiniteOpt.parameter_group_int_index(pref)

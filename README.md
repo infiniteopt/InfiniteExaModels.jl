@@ -10,6 +10,7 @@ ExaModels' `Optimizer` interface.
 
 ## Status
 [![Build Status](https://github.com/infiniteopt/InfiniteExaModels.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/infiniteopt/InfiniteExaModels.jl/actions/workflows/ci.yml) [![codecov.io](https://codecov.io/github/infiniteopt/InfiniteExaModels.jl/coverage.svg?branch=main)](https://codecov.io/github/infiniteopt/InfiniteExaModels.jl?branch=main)
+
 InfiniteExaModels is test on Windows, MacOS, and Linux on Julia 1.10 and the latest release.
 
 ## Installation

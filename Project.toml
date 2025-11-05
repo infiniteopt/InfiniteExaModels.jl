@@ -8,8 +8,8 @@ ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
 InfiniteOpt = "20393b10-9daf-11e9-18c9-8db751c92c57"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
 MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
-SolverCore = "ff4d7338-4cf1-434d-91df-b86cb86fb843"
 NLPModels = "a4795742-8479-5a88-8948-cc11e1c8c1a6"
+SolverCore = "ff4d7338-4cf1-434d-91df-b86cb86fb843"
 
 [weakdeps]
 MadNLP = "2621e9c9-9eb4-46b1-8089-e8c72242dfb6"
@@ -21,20 +21,22 @@ InfiniteExaModelsMadNLP = "MadNLP"
 
 [compat]
 ExaModels = "0.9"
-julia = "1.10"
+InfiniteOpt = "0.6"
 JuMP = "1.15"
-MathOptInterface = "1.19"
 MadNLP = "0.8"
+MathOptInterface = "1.19"
+NLPModels = "0.21"
 NLPModelsIpopt = "0.10, 0.11"
 SolverCore = "0.3"
+julia = "1.10"
 
 [extras]
+Ipopt = "b6b21f68-93f8-5de0-b562-5493be1d77c9"
 MadNLP = "2621e9c9-9eb4-46b1-8089-e8c72242dfb6"
 NLPModelsIpopt = "f4238b75-b362-5c4c-b852-0801c9a21d71"
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
-Ipopt = "b6b21f68-93f8-5de0-b562-5493be1d77c9"
 Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
 test = ["Test", "MadNLP", "NLPModelsIpopt", "Pkg", "Ipopt", "Suppressor"]

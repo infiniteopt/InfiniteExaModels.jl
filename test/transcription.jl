@@ -106,9 +106,6 @@ end
     
     # Test finite parameter mappings
     @test length(keys(exaData.param_mappings)) == 3
-    @test InfiniteExaModels._check_mapping(x, exaBackend) === nothing
-    @test InfiniteExaModels._check_mapping(y[1], exaBackend) === nothing
-    @test InfiniteExaModels._check_mapping(y[2], exaBackend) === nothing
     xMapping = exaData.param_mappings[x]
     y1Mapping = exaData.param_mappings[y[1]]
     y2Mapping = exaData.param_mappings[y[2]]

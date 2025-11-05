@@ -1,5 +1,13 @@
 """
+    ExaMappingData
 
+Stores the mappings between an `InfiniteOpt.InfiniteModel` and an
+`ExaModel` along with metadata used to create an `ExaTranscriptionBackend`.
+The mappings for variables and constraints are extracted by indexing the data:
+```julia
+examodel_mapped_var = data[ref::InfiniteOpt.GeneralVariableRef]
+examodel_mapped_constr = data[cref::InfiniteOpt.InfOptConstraintRef]
+```
 """
 struct ExaMappingData
     # Mappings
@@ -48,8 +56,43 @@ struct ExaMappingData
     end
 end
 
-"""
+# Extend Base.getindex for accessing mappings
+function Base.getindex(
+    data::ExaMappingData,
+    ref::InfiniteOpt.GeneralVariableRef
+    )
+    if haskey(data.infvar_mappings, ref)
+        return data.infvar_mappings[ref]
+    elseif haskey(data.finvar_mappings, ref)
+        return data.finvar_mappings[ref]
+    elseif haskey(data.param_mappings, ref)
+        return data.param_mappings[ref]
+    else
+        error("No mapping found for `$ref`.")
+    end
+end
+function Base.getindex(
+    data::ExaMappingData,
+    cref::InfiniteOpt.InfOptConstraintRef
+    )
+    if haskey(data.constraint_mappings, cref)
+        return data.constraint_mappings[cref]
+    else
+        error("No mapping found for `$cref`.")
+    end
+end
 
+"""
+    ExaTranscriptionBackend <: InfiniteOpt.AbstractTransformationBackend
+
+An `InfiniteOpt` transformation backend that uses `ExaModels` to solve transcribed
+`InfiniteOpt.InfiniteModel`s. This is created via:
+```julia
+exa_backend = ExaTranscriptionBackend([solver_type]; backend = nothing)
+```
+where `solver_type` is an optimizer constructor from the JuliaSmoothOptimizers ecosystem
+(i.e., `IpoptSolver` or `MadNLPSolver`) and `backend` is the desired `ExaModels` backend
+(e.g., `CUDABackend()` for GPU workflows). 
 """
 mutable struct ExaTranscriptionBackend{B} <: InfiniteOpt.AbstractTransformationBackend
     core::Union{Nothing, ExaModels.ExaCore}
@@ -65,9 +108,7 @@ mutable struct ExaTranscriptionBackend{B} <: InfiniteOpt.AbstractTransformationB
     data::ExaMappingData
 end
 
-"""
-
-"""
+# Constructors
 function ExaTranscriptionBackend(; backend = nothing)
     return ExaTranscriptionBackend(
         nothing,
@@ -227,39 +268,19 @@ function JuMP.optimize!(backend::ExaTranscriptionBackend)
     return backend.results
 end
 
-# Check whether a mapping exists
-function _check_mapping(vref::InfiniteOpt.GeneralVariableRef, backend)
-    data = backend.data
-    if !haskey(data.infvar_mappings, vref) && !haskey(data.finvar_mappings, vref) && !haskey(data.param_mappings, vref)
-        error("A mapping for `$vref` in the transformation backend not found.")
-    end
-    return
-end
-function _check_mapping(cref::InfiniteOpt.InfOptConstraintRef, backend)
-    if !haskey(backend.data.constraint_mappings, cref)
-        error("A mapping for `$cref` in the transformation backend not found.")
-    end
-    return
-end
-
 # InfiniteOpt object mapping methods
 function InfiniteOpt.transformation_variable(
     vref::InfiniteOpt.GeneralVariableRef,
     backend::ExaTranscriptionBackend
     ) # TODO add keywords (e.g., label)
-    _check_mapping(vref, backend)
-    data = backend.data
-    haskey(data.infvar_mappings, vref) && return data.infvar_mappings[vref]
-    haskey(data.finvar_mappings, vref) && return data.finvar_mappings[vref]
-    return data.param_mappings[vref]
+    return backend.data[vref]
 end
 # TODO find a way to support expressions
 function InfiniteOpt.transformation_constraint(
     cref::InfiniteOpt.InfOptConstraintRef,
     backend::ExaTranscriptionBackend
     ) # TODO add keywords (e.g., label)
-    _check_mapping(cref, backend)
-    return backend.data.constraint_mappings[cref]
+    return backend.data[cref]
 end
 
 # Extract the supports for a given variable/constraint reference

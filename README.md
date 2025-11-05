@@ -8,14 +8,17 @@ ExaModels' `Optimizer` interface.
 
 ![Abstract](schematic.JPG)
 
+## Status
+[![Build Status](https://github.com/infiniteopt/InfiniteExaModels.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/infiniteopt/InfiniteExaModels.jl/actions/workflows/ci.yml) [![codecov.io](https://codecov.io/github/infiniteopt/InfiniteExaModels.jl/coverage.svg?branch=main)](https://codecov.io/github/infiniteopt/InfiniteExaModels.jl?branch=main)
+InfiniteExaModels is test on Windows, MacOS, and Linux on Julia 1.10 and the latest release.
+
 ## Installation
-InfiniteExaModels is nearly ready for official release, but still needs some polishing touches first. In the meantime,
-you can try it out by installing the developmental versions of InfiniteExaModels and InfiniteOpt 
-(Julia `v1.9` or newer is required):
+InfiniteExaModels is ready for official release and is pending package registration. 
+This is anticipated to occur within a few days. In the meantime, the development version
+can be installed:
 ```julia
 using Pkg
 Pkg.add(url = "https://github.com/infiniteopt/InfiniteExaModels.jl", rev = "main")
-Pkg.add(url = "https://github.com/infiniteopt/InfiniteOpt.jl", rev = "master")
 ```
 
 ## Usage
@@ -42,13 +45,16 @@ model = InfiniteModel(ExaTranscriptionBackend(MadNLPSolver, backend = CUDABacken
 ## Citation
 If this is useful for your work please consider citing it:
 ```latex
-@incollection{pulsipher2024scalable,
-  title={Scalable Modeling of Infinite-Dimensional Nonlinear Programs with InfiniteExaModels.jl},
-  author={Pulsipher, Joshua L and Shin, Sungho},
-  booktitle={Computer Aided Chemical Engineering},
-  volume={53},
-  pages={3373--3378},
-  year={2024},
-  publisher={Elsevier}
+@article{Gondosiswanto2025advances,
+title = {Advances to modeling and solving infinite-dimensional optimization problems in InfiniteOpt.jl},
+journal = {Digital Chemical Engineering},
+volume = {15},
+pages = {100236},
+year = {2025},
+issn = {2772-5081},
+doi = {https://doi.org/10.1016/j.dche.2025.100236},
+url = {https://www.sciencedirect.com/science/article/pii/S2772508125000201},
+author = {Evelyn Gondosiswanto and Joshua L. Pulsipher},
 }
 ```
+The article is freely available [here](https://doi.org/10.1016/j.dche.2025.100236).

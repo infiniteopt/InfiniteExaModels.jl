@@ -404,7 +404,8 @@ function _get_constr_bounds(set::_MOI.Interval)
     return set.lower, set.upper
 end
 function _get_constr_bounds(set)
-    error("Constraint set `$set` is not supported by InfiniteExaModels.")
+    error("Constraint set `$set` is not supported by InfiniteExaModels, ",
+          "if you need support for this constraint type, please open an issue.")
 end
 
 # Check if NamedTuple iterator respects the restriction
@@ -601,7 +602,8 @@ end
 const _ObjMeasureExpansionWarn = string(
     "Unable to convert objective measures into a form that is ",
     "efficient for ExaModels using existing heuristics. Performance ",
-    "may be significantly degraded. Try simplying the objective structure."
+    "may be significantly degraded. Try simplying the objective structure. ",
+    "if you think this form should be supported, please open an issue."
 )
 
 # Write a finite expression `expr` in a single objective term (this is a generic fallback)
@@ -796,7 +798,14 @@ function build_exa_core!(
 end
 
 """
+    ExaModels.ExaCore(
+        inf_model::InfiniteOpt.InfiniteModel,
+        data::ExaMappingData;
+        [backend = nothing]
+    )::ExaModels.ExaCore
 
+Create `ExaModels.ExaCore` from `inf_model` using the provided
+`ExaMappingData` to store the variable and constraint mappings.
 """
 function ExaModels.ExaCore(
     inf_model::InfiniteOpt.InfiniteModel,
@@ -811,7 +820,14 @@ function ExaModels.ExaCore(
 end
 
 """
+    ExaModels.ExaModel(
+        inf_model::InfiniteOpt.InfiniteModel,
+        [data::ExaMappingData];
+        [backend = nothing]
+    )::ExaModels.ExaModel
 
+Create an `ExaModels.ExaModel` from `inf_model` and store the mappings in
+`data`. If `data` is not provided, the mappings cannot be readily extracted.
 """
 function ExaModels.ExaModel(
     inf_model::InfiniteOpt.InfiniteModel,

@@ -48,7 +48,8 @@ const _op_mappings = Dict{Symbol, Function}(
 # Map a nonlinear function symbol to the underlying function
 function _nl_op(s::Symbol)
     if !haskey(_op_mappings, s)
-        error("`InfiniteExaModel`s does not support the nonlinear operator `$s`.")
+        error("`InfiniteExaModel`s does not support the nonlinear operator `$s`. ",
+              "If you need support for this operator, please open an issue.")
     end
     return _op_mappings[s]
 end

@@ -2,24 +2,22 @@
 This package provides a transformation backend for [InfiniteOpt](https://github.com/infiniteopt/InfiniteOpt.jl)
 such that InfiniteOpt models are efficiently transformed into [ExaModels](https://github.com/exanauts/ExaModels.jl)
 via automated direct transcription. The underlying ExaModels models leverage recurrent algebraic structure to 
-facilitate accelerated solution on CPUs and GPUs. Moreover, InfiniteOpt provides an intuitive interface that
-automates transcription and drastically reduced model creation time relative to solving JuMP models via
-ExaModels' `Optimizer` interface.
+facilitate accelerated solution on CPUs and GPUs (up to two orders-of-magnitude faster).
+Moreover, InfiniteOpt provides an intuitive interface that automates transcription and drastically reduced 
+model creation time relative to solving JuMP models via ExaModels' `Optimizer` interface.
 
 ![Abstract](schematic.JPG)
 
 ## Status
 [![Build Status](https://github.com/infiniteopt/InfiniteExaModels.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/infiniteopt/InfiniteExaModels.jl/actions/workflows/ci.yml) [![codecov.io](https://codecov.io/github/infiniteopt/InfiniteExaModels.jl/coverage.svg?branch=main)](https://codecov.io/github/infiniteopt/InfiniteExaModels.jl?branch=main)
 
-InfiniteExaModels is tested on Windows, MacOS, and Linux on Julia 1.10 and the latest release.
+InfiniteExaModels is tested on Windows, MacOS, and Linux on Julia's LTS and the latest release.
 
 ## Installation
-InfiniteExaModels is ready for official release and is pending package registration. 
-This is anticipated to occur within a few days. In the meantime, the development version
-can be installed:
+InfiniteExaModels is a registered Julia package and is installed like any other:
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/infiniteopt/InfiniteExaModels.jl", rev = "main")
+Pkg.add("InfiniteExaModels")
 ```
 
 ## Usage

@@ -207,3 +207,12 @@ end
         @test_logs (:warn, InfiniteExaModels._ObjMeasureExpansionWarn) ExaModel(model) isa ExaModel
     end
 end
+
+@testset "Domain Restrictions" begin
+    model = InfiniteModel()
+    @infinite_parameter(model, t in [0, 1], num_supports = 10)
+    @variable(model, y, Infinite(t))
+    @constraint(model, y^2 >= 2, DomainRestrictions(t -> t >= 0.5, t))
+    @test ExaModel(model) isa ExaModel
+    @test length(ExaModel(model).cons.itr) == sum(supports(t) .>= 0.5)
+end

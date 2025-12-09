@@ -212,7 +212,7 @@ end
     model = InfiniteModel()
     @infinite_parameter(model, t in [0, 1], num_supports = 10)
     @variable(model, y, Infinite(t))
-    @constraint(model, y^2 >= 2, DomainRestrictions(t -> t >= 0.5, t))
+    @constraint(model, y^2 >= 2, DomainRestriction(t -> t >= 0.5, t))
     @test ExaModel(model) isa ExaModel
     @test length(ExaModel(model).cons.itr) == sum(supports(t) .>= 0.5)
 end

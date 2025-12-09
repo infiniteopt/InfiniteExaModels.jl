@@ -1,7 +1,7 @@
 name = "InfiniteExaModels"
 uuid = "ffdf776e-a381-4021-b00a-97884d4c0dcd"
 authors = ["Joshua Pulsipher and Sungho Shin"]
-version = "0.1.0"
+version = "0.1.1"
 
 [deps]
 ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
@@ -25,7 +25,7 @@ InfiniteOpt = "0.6"
 JuMP = "1.15"
 MadNLP = "0.8"
 MathOptInterface = "1.19"
-NLPModels = "0.21"
+NLPModels = "0.21, 0.22"
 NLPModelsIpopt = "0.10, 0.11"
 SolverCore = "0.3"
 julia = "1.10"

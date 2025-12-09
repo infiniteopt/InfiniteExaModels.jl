@@ -445,7 +445,7 @@ function _add_constraints(
         # Remove any elements of the iterator that violate the domain restriction
         if InfiniteOpt.has_domain_restriction(cref)
             restriction = InfiniteOpt.domain_restriction(cref)
-            filter!(i -> _support_in_restriction(restriction, i, data), itr)
+            itr = filter(i -> _support_in_restriction(restriction, i, data), itr)
         end
         # create the ExaModels expression tree based on expr
         par_src = ExaModels.ParSource()

@@ -61,7 +61,7 @@ function InfiniteExaModels.resolve(
     if haskey(sol_options, :print_level)
         backend.solver.logger.print_level = sol_options[:print_level]
     end
-    return MadNLP.solve!(backend.model, solver; sol_options...)
+    return MadNLP.solve!(solver; sol_options...)
 end
 
 # Standard JSO statuses to MOI.TerminationStatusCode

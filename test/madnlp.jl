@@ -17,7 +17,7 @@ tol = 1e-6
     @test (output = @capture_out result = optimize!(m)) == ""
     @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
     @test etb.solver.opt.max_iter == 3000 # MadNLP default
-    # @test etb.solver.opt.barrier.mu_init == 1e-1  # MadNLP default
+    @test etb.solver.opt.barrier.mu_init == 1e-1  # MadNLP default
     @test etb.solver.opt.max_wall_time == etb.time_limit
     @test etb.solver.logger.print_level == MadNLP.ERROR
     @test !isempty(etb.prev_options)
@@ -29,7 +29,8 @@ tol = 1e-6
     unset_silent(m) # Turn off silent mode
     set_time_limit_sec(m, 200.0)   # Change time time_limit
     set_optimizer_attribute(m, :max_iter, 50)
-    # set_optimizer_attribute(m, :mu_init, 1e-2)
+    mu_update = MadNLP.MonotoneUpdate(mu_init = 1e-2)
+    set_optimizer_attribute(m, :barrier, mu_update)
     set_optimizer_attribute(m, :tol, 1e-6)  # new option
     @test etb.silent == false
 
@@ -40,16 +41,16 @@ tol = 1e-6
     output = @capture_out result = optimize!(m)
     @test isapprox(objective_value(m), -1.2784599867885884e+01, atol=tol)
     @test etb.solver.opt.max_iter == 50
-    # @test etb.solver.opt.barrier.mu_init == 1e-2
+    @test etb.solver.opt.barrier.mu_init == 1e-2
     @test etb.options == Dict(
         :solver   => MadNLPSolver,
         :max_iter => 50,
-        # :mu_init  => 1e-2,
+        :barrier  => mu_update,
         :tol      => 1e-6,
         )
     @test etb.prev_options == Dict(
         :max_iter => 50,
-        # :mu_init => 1e-2,
+        :barrier => mu_update,
         :tol => 1e-6,
         :print_level => MadNLP.INFO,
         :max_wall_time => 200.0,
@@ -71,24 +72,25 @@ end
     set_time_limit_sec(m, 120.0)
     @test etb.time_limit == 120.0
     set_optimizer_attribute(m, :max_iter, 50)
-    # set_optimizer_attribute(m, :mu_init, 1e-2)
+    mu_update = MadNLP.MonotoneUpdate(mu_init = 1e-2)
+    set_optimizer_attribute(m, :barrier, mu_update)
     set_optimizer_attribute(m, :tol, 1e-6)
     output = @capture_out result = optimize!(m)
     @test occursin("This is ", output)
     @test isapprox(objective_value(m), -1.2784599900757165e+01, atol=tol)
     @test etb.solver.opt.max_iter == 50 # MadNLP default
-    # @test etb.solver.opt.barrier.mu_init == 1e-2  # MadNLP default
+    @test etb.solver.opt.barrier.mu_init == 1e-2  # MadNLP default
     @test etb.solver.opt.max_wall_time == etb.time_limit
     @test !isempty(etb.prev_options)
     @test etb.options == Dict(
         :solver => MadNLPSolver,
         :max_iter => 50,
-        # :mu_init => 1e-2,
+        :barrier => mu_update,
         :tol => 1e-6,
         )
     @test etb.prev_options == Dict(
         :max_iter => 50,
-        # :mu_init => 1e-2,
+        :barrier => mu_update,
         :tol => 1e-6,
         :max_wall_time => 120.0
         )
@@ -107,14 +109,14 @@ end
         :print_level => MadNLP.WARN,
         :max_wall_time => 1.0E6,
         :tol => 1e-6,
-        # :mu_init => 1e-2,
+        :barrier => mu_update,
         :max_iter => 50,
         )
     @test etb.solver.logger.print_level == MadNLP.WARN
     @test etb.options == Dict(
         :solver => MadNLPSolver,
         :max_iter => 50,
-        # :mu_init => 1e-2,
+        :barrier => mu_update,
         :tol => 1e-6,
         :print_level => MadNLP.WARN,
         )
@@ -130,13 +132,13 @@ end
     @test etb.options == Dict(
         :solver => MadNLPSolver,
         :max_iter => 50,
-        # :mu_init => 1e-2,
+        :barrier => mu_update,
         :tol => 1e-6,
         :print_level => MadNLP.WARN,
         )
     @test etb.prev_options == Dict(
         :max_iter => 50,
-        # :mu_init => 1e-2,
+        :barrier => mu_update,
         :tol => 1e-6,
         :max_wall_time => 150.0,
         :print_level => MadNLP.ERROR,
@@ -149,7 +151,7 @@ end
     @test etb.options == Dict(
         :solver => MadNLPSolver,
         :max_iter => 50,
-        # :mu_init => 1e-2,
+        :barrier => mu_update,
         :tol => 1e-6,
         :print_level => MadNLP.WARN,
         )
@@ -157,7 +159,7 @@ end
         :print_level => MadNLP.WARN,
         :max_wall_time => 150,
         :tol => 1e-6,
-        # :mu_init => 1e-2,
+        :barrier => mu_update,
         :max_iter => 50
         )
 end

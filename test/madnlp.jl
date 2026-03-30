@@ -71,7 +71,7 @@ end
     set_time_limit_sec(m, 120.0)
     @test etb.time_limit == 120.0
     set_optimizer_attribute(m, :max_iter, 50)
-    set_optimizer_attribute(m, :mu_init, 1e-2)
+    # set_optimizer_attribute(m, :mu_init, 1e-2)
     set_optimizer_attribute(m, :tol, 1e-6)
     output = @capture_out result = optimize!(m)
     @test occursin("This is ", output)

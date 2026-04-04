@@ -1,6 +1,6 @@
 name = "InfiniteExaModels"
 uuid = "ffdf776e-a381-4021-b00a-97884d4c0dcd"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Joshua Pulsipher and Sungho Shin"]
 
 [deps]

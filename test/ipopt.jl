@@ -203,3 +203,19 @@ end
     @test all(isapprox(NLPModels.get_x0(model), results.solution, atol=tol))
     @test all(isapprox(NLPModels.get_y0(model), results.multipliers, atol = tol))
 end
+
+# test resolves with backend rebuilds (#26)
+@testset "Resolve with backend rebuilds" begin
+    m = InfiniteModel(ExaTranscriptionBackend(NLPModelsIpopt.IpoptSolver))
+    @infinite_parameter(m, t in [0, 1], num_supports = 5)
+    @infinite_parameter(m, x in [-1, 1], num_supports = 5)
+    @variable(m, y >= 0, Infinite(t, x), start = 1.0)
+    @finite_parameter(m, z == 10)
+    @objective(m, Min, ∫(∫(y^2, t) + 2z, x))
+    @constraint(m, y + z <= 42 + t)
+    set_silent(m)
+    optimize!(m)
+    set_start_value(y, 1.0)
+    output = @capture_out result = optimize!(m)
+    @test isempty(output) # should still be silent
+end

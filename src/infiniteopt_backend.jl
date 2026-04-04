@@ -132,7 +132,9 @@ end
 
 # Extend Base.empty! (leave the options alone)
 function Base.empty!(backend::ExaTranscriptionBackend)
+    backend.core = nothing
     backend.model = nothing
+    empty!(backend.prev_options)
     backend.solver = nothing
     backend.results = nothing
     backend.solve_time = NaN

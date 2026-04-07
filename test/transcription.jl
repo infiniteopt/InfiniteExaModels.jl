@@ -29,7 +29,7 @@
     end
     # test mapping finite variables
     @testset "_add_finite_variables" begin
-        @test InfiniteExaModels._add_finite_variables(c, data, m) isa Nothing
+        c = InfiniteExaModels._add_finite_variables(c, data, m)
         v = ExaModels.Var(1)
         @test data.finvar_mappings[z] == v
         @test c.x0[v.i] == 10
@@ -38,7 +38,7 @@
     end
     # test mapping infinite variables
     @testset "_add_infinite_variables" begin
-        @test InfiniteExaModels._add_infinite_variables(c, data, m) isa Nothing
+        c = InfiniteExaModels._add_infinite_variables(c, data, m)
         # test y variable mapping
         yvar = data.infvar_mappings[y]
         @test yvar.length == 5

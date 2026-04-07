@@ -125,7 +125,7 @@ function _add_finite_parameters(
     for pref in JuMP.all_variables(inf_model, InfiniteOpt.FiniteParameter)
         param_val = InfiniteOpt.parameter_value(pref)
         core, new_par = ExaModels.add_par(core, [param_val])
-        data.param_mappings[pref] = new_par[1]
+        data.param_mappings[pref] = new_par
     end
     return core
 end
@@ -177,7 +177,7 @@ function _add_parameter_functions(
         end
         # Register the parameter function values in the ExaCore & mapping data
         core, new_par = ExaModels.add_par(core, vals)
-        data.data.param_mappings[pfref] = new_par
+        data.param_mappings[pfref] = new_par
     end
     return core
 end

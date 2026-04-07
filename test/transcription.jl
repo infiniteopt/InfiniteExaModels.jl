@@ -214,5 +214,5 @@ end
     @variable(model, y, Infinite(t))
     @constraint(model, y^2 >= 2, DomainRestriction(t -> t >= 0.5, t))
     @test ExaModel(model) isa ExaModel
-    @test length(ExaModel(model).cons.itr) == sum(supports(t) .>= 0.5)
+    @test length(ExaModel(model).cons) == sum(supports(t) .>= 0.5)
 end

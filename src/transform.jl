@@ -110,10 +110,10 @@ function _add_finite_variables(
         info = InfiniteOpt.core_object(vref).info # JuMP.VariableInfo
         _ensure_continuous(info)
         lb, ub, start = _get_variable_bounds_and_start(info)
-        new_var = ExaModels.variable(core, 1, start = start, lvar = lb, uvar = ub)
+        core, new_var = ExaModels.add_var(core, 1, start = start, lvar = lb, uvar = ub)
         data.finvar_mappings[vref] = new_var[1]
     end
-    return
+    return core
 end
 
 # Add all the finite parameters from an InfiniteModel to a ExaCore
@@ -124,9 +124,9 @@ function _add_finite_parameters(
     )
     for pref in JuMP.all_variables(inf_model, InfiniteOpt.FiniteParameter)
         param_val = InfiniteOpt.parameter_value(pref)
-        data.param_mappings[pref] = ExaModels.parameter(core, [param_val])
+        core, data.param_mappings[pref] = ExaModels.add_par(core, [param_val])
     end
-    return
+    return core
 end
 
 # Add all the infinite variables (and derivatives) from an InfiniteModel to a ExaCore
@@ -150,10 +150,10 @@ function _add_infinite_variables(
         lb, ub, start = _get_variable_bounds_and_start(info, itrs)
         # create the ExaModels variable
         dims = Tuple(length(itr) for itr in itrs)
-        new_var = ExaModels.variable(core, dims...; start = start, lvar = lb, uvar = ub)
+        core, new_var = ExaModels.add_var(core, dims...; start = start, lvar = lb, uvar = ub)
         data.infvar_mappings[vref] = new_var
     end
-    return 
+    return core
 end
 
 # Process all the parameter function from an InfiniteModel and add to an ExaCore
@@ -175,9 +175,9 @@ function _add_parameter_functions(
             vals[first.(i)...] = pfunc(supp)
         end
         # Register the parameter function values in the ExaCore & mapping data
-        data.param_mappings[pfref] = ExaModels.parameter(core, vals)
+        core, data.param_mappings[pfref] = ExaModels.add_par(core, vals)
     end
-    return
+    return core
 end
 
 # Helper function for processing semi-infinite variables
@@ -453,10 +453,10 @@ function _add_constraints(
         # get the constraint bounds
         lb, ub = _get_constr_bounds(set)
         # create the ExaModels constraint
-        con = ExaModels.constraint(core, em_expr, itr, lcon = lb, ucon = ub)
+        core, con = ExaModels.add_con(core, em_expr, itr, lcon = lb, ucon = ub)
         data.constraint_mappings[cref] = con
     end
-    return
+    return core
 end
 
 # Make dispatch type to pass the data needed by `make_reduced_expr`
@@ -554,9 +554,9 @@ function _add_derivative_approximations(
             (par_src[a] for a in aliases)...
             )
         # add the constraint
-        ExaModels.constraint(core, em_expr, itr)
+        core, _ = ExaModels.add_con(core, em_expr, itr)
     end
-    return
+    return core
 end
 
 # Add the constraints needed for piecewise constant control variables
@@ -592,10 +592,10 @@ function _add_collocation_restrictions(
             idx_pars2 = (a == pref_alias ? par_src[:i2] : par_src[a] for a in aliases)
             ivar = data.infvar_mappings[vref]
             em_expr = ivar[idx_pars1...] - ivar[idx_pars2...]
-            ExaModels.constraint(core, em_expr, itr)
+            core, _ = ExaModels.add_con(core, em_expr, itr)
         end
     end
-    return
+    return core
 end
 
 # Define warning message for when measure heuristics fail
@@ -609,8 +609,7 @@ const _ObjMeasureExpansionWarn = string(
 # Write a finite expression `expr` in a single objective term (this is a generic fallback)
 function _add_generic_objective_term(core, expr, data)
     em_expr = _finalize_expr(_exafy(expr, (;), data))
-    ExaModels.objective(core, em_expr, [(;)])
-    return
+    return ExaModels.add_obj(core, em_expr, [(;)])
 end
 
 # Helper function for generate an iterator based on measure data 
@@ -696,12 +695,11 @@ function _add_objective_aff_term(core, coef, vref, ::Type{InfiniteOpt.MeasureInd
     par_src = ExaModels.ParSource()
     em_expr = par_src.c * _exafy(coef * mexpr, par_src, data)
     # add the term to the objective
-    ExaModels.objective(core, _finalize_expr(em_expr), itr)
-    return
+    core, _ = ExaModels.add_obj(core, _finalize_expr(em_expr), itr)
+    return core
 end
 function _add_objective_aff_term(core, coef, vref, _, data)
-    _add_generic_objective_term(core, coef * vref, data)
-    return
+    return _add_generic_objective_term(core, coef * vref, data)
 end
 
 # Add the objective from an InfiniteModel to an ExaCore
@@ -716,8 +714,7 @@ function _add_objective(
         @warn _ObjMeasureExpansionWarn
     end
     new_expr = InfiniteOpt.expand_measures(expr, inf_model)
-    _add_generic_objective_term(core, new_expr, data)
-    return
+    return _add_generic_objective_term(core, new_expr, data)
 end
 function _add_objective(
     core::ExaModels.ExaCore,
@@ -725,8 +722,7 @@ function _add_objective(
     data::ExaMappingData, 
     ::InfiniteOpt.InfiniteModel
     )
-    _add_objective_aff_term(core, 1.0, vref, data)
-    return
+    return _add_objective_aff_term(core, 1.0, vref, data)
 end
 function _add_objective(
     core::ExaModels.ExaCore,
@@ -736,13 +732,13 @@ function _add_objective(
     )
     # TODO should we check if there are a lot of terms?
     for (coef, vref) in JuMP.linear_terms(aff)
-        _add_objective_aff_term(core, coef, vref, data)
+        core = _add_objective_aff_term(core, coef, vref, data)
     end
     c = JuMP.constant(aff)
     if !iszero(c)
-        ExaModels.objective(core, ExaModels.Null(c))
+        core, _ = ExaModels.add_obj(core, ExaModels.Null(c))
     end
-    return
+    return core
 end
 function _add_objective(
     core::ExaModels.ExaCore,
@@ -756,16 +752,16 @@ function _add_objective(
             # TODO see if we can avoid the generic fallback in this case
             @warn _ObjMeasureExpansionWarn
             new_expr = InfiniteOpt.expand_measures(coef * vref1 * vref2, inf_model)
-            _add_generic_objective_term(core, new_expr, data)
+            core = _add_generic_objective_term(core, new_expr, data)
         elseif vref1.index_type == InfiniteOpt.MeasureIndex
-            _add_objective_aff_term(core, coef * vref2, vref1, data)
+            core = _add_objective_aff_term(core, coef * vref2, vref1, data)
         else
-            _add_objective_aff_term(core, coef * vref1, vref2, data)
+            core = _add_objective_aff_term(core, coef * vref1, vref2, data)
         end
     end
     # add the affine terms
-    _add_objective(core, quad.aff, data, inf_model)
-    return
+    core = _add_objective(core, quad.aff, data, inf_model)
+    return core
 end
 # TODO add heuristics for nonlinear expressions
 
@@ -778,23 +774,23 @@ function build_exa_core!(
     # initial setup
     _build_base_iterators(data, inf_model)
     # add the variables and appropriate mappings
-    _add_finite_parameters(core, data, inf_model)
-    _add_finite_variables(core, data, inf_model)
-    _add_infinite_variables(core, data, inf_model) # includes derivatives
-    _add_parameter_functions(core, data, inf_model)
+    core = _add_finite_parameters(core, data, inf_model)
+    core = _add_finite_variables(core, data, inf_model)
+    core = _add_infinite_variables(core, data, inf_model) # includes derivatives
+    core = _add_parameter_functions(core, data, inf_model)
     _add_semi_infinite_variables(core, data, inf_model)
     _add_point_variables(core, data, inf_model)
     # add the constraints
-    _add_constraints(core, data, inf_model)
-    _add_derivative_approximations(core, data, inf_model)
-    _add_collocation_restrictions(core, data, inf_model)
+    core = _add_constraints(core, data, inf_model)
+    core = _add_derivative_approximations(core, data, inf_model)
+    core = _add_collocation_restrictions(core, data, inf_model)
     # add the objective if there is one
     expr = JuMP.objective_function(inf_model)
     sense = JuMP.objective_sense(inf_model)
     if sense != _MOI.FEASIBILITY_SENSE
-        _add_objective(core, expr, data, inf_model)
+        core = _add_objective(core, expr, data, inf_model)
     end
-    return
+    return core
 end
 
 """
@@ -815,8 +811,7 @@ function ExaModels.ExaCore(
     # TODO add support for other float types once InfiniteOpt does
     minimize = JuMP.objective_sense(inf_model) == _MOI.MIN_SENSE
     core = ExaModels.ExaCore(; backend = backend, minimize = minimize)
-    build_exa_core!(core, data, inf_model)
-    return core
+    return build_exa_core!(core, data, inf_model)
 end
 
 """

@@ -1,3 +1,6 @@
+import Pkg
+Pkg.add(PackageSpec(name="ExaModels", rev="claude/sync-generated-files-upEXG"))
+
 using Test, InfiniteOpt, InfiniteExaModels, MadNLP, NLPModelsIpopt
 using ExaModels, Ipopt, Suppressor, NLPModels
 

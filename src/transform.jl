@@ -611,7 +611,7 @@ const _ObjMeasureExpansionWarn = string(
 # Write a finite expression `expr` in a single objective term (this is a generic fallback)
 function _add_generic_objective_term(core, expr, data)
     em_expr = _finalize_expr(_exafy(expr, (;), data))
-    return ExaModels.add_obj(core, em_expr, [(;)])
+    return ExaModels.add_obj(core, em_expr, [(;)])[1]
 end
 
 # Helper function for generate an iterator based on measure data 

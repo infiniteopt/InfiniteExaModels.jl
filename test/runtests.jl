@@ -1,6 +1,3 @@
-import Pkg
-Pkg.add(url="https://github.com/exanauts/ExaModels.jl.git", rev="claude/sync-generated-files-upEXG")
-
 using Test, InfiniteOpt, InfiniteExaModels, MadNLP, NLPModelsIpopt
 using ExaModels, Ipopt, Suppressor, NLPModels
 

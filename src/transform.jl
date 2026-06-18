@@ -799,8 +799,7 @@ end
     ExaModels.ExaCore(
         inf_model::InfiniteOpt.InfiniteModel,
         data::ExaMappingData;
-        [backend = nothing,
-        concrete = Val(true)]
+        [backend = nothing]
     )::ExaModels.ExaCore
 
 Create `ExaModels.ExaCore` from `inf_model` using the provided
@@ -809,12 +808,11 @@ Create `ExaModels.ExaCore` from `inf_model` using the provided
 function ExaModels.ExaCore(
     inf_model::InfiniteOpt.InfiniteModel,
     data::ExaMappingData;
-    backend = nothing,
-    concrete = Val(true)
+    backend = nothing
     )
     # TODO add support for other float types once InfiniteOpt does
     minimize = JuMP.objective_sense(inf_model) == _MOI.MIN_SENSE
-    core = ExaModels.ExaCore(; backend = backend, minimize = minimize, concrete = concrete)
+    core = ExaModels.ExaCore(; backend = backend, minimize = minimize, concrete = Val(true))
     return build_exa_core!(core, data, inf_model)
 end
 

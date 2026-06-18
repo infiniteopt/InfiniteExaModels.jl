@@ -19,7 +19,7 @@
     d1 = deriv(y, t)
     d2 = deriv(q, x, x)
     @variable(m, z, start = 10)
-    c = ExaModels.ExaCore()
+    c = ExaModels.ExaCore(concrete = Val(true))
     data = ExaMappingData()
     # test building up supports
     @testset "_build_base_iterators" begin

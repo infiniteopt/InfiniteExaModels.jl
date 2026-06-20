@@ -207,3 +207,34 @@ end
     @test value(pf1) == expectedpf1
     @test reshape(value(pf2), 9) == expectedpf2
 end
+
+@testset "Start value updates" begin
+    m = InfiniteModel(ExaTranscriptionBackend(IpoptSolver))
+    @infinite_parameter(m, t in [0, 1], num_supports = 3)
+    @variable(m, x, Infinite(t))
+    @variable(m, z, start = 3)
+    @constraint(m, x + z == 1)
+    @test build_transformation_backend!(m) isa Nothing
+    # Update the values
+    @test set_start_value(z, 10) isa Nothing
+    @test transformation_backend_ready(m)
+    @test transformation_backend(m).core.x0[transformation_variable(z).i] == 10
+    @test set_start_value(x, 20) isa Nothing
+    @test transformation_backend_ready(m)
+    var = transformation_variable(x)
+    @test all(transformation_backend(m).core.x0[i] == 20 for i in var.offset+1:var.offset+var.length)
+    @test set_start_value(x, t -> 42) isa Nothing
+    @test transformation_backend_ready(m)
+    @test all(transformation_backend(m).core.x0[i] == 42 for i in var.offset+1:var.offset+var.length)
+    # test bad updates
+    @variable(m, w)
+    integral(w, t)
+    @test transformation_backend_ready(m)
+    @test set_start_value(w, 5) isa Nothing
+    @test !transformation_backend_ready(m)
+    @test build_transformation_backend!(m) isa Nothing
+    @variable(m, q, Infinite(t))
+    integral(q, t)
+    @test set_start_value(q, sin) isa Nothing
+    @test !transformation_backend_ready(m)
+end

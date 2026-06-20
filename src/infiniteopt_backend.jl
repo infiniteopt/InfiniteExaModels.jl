@@ -547,6 +547,50 @@ function InfiniteOpt.update_parameter_value(
     return true
 end
 
+# For updating variable start values
+function InfiniteOpt.update_start_value(
+    backend::ExaTranscriptionBackend,
+    vref::InfiniteOpt.DecisionVariableRef,
+    value::Real
+    )
+    data = InfiniteOpt.transformation_data(backend)
+    gvref = InfiniteOpt.GeneralVariableRef(vref)
+    if haskey(data.infvar_mappings, gvref)
+        var = data[gvref]
+        @view(backend.core.x0[var.offset+1:var.offset+var.length]) .= value
+    elseif haskey(data.finvar_mappings, gvref)
+        backend.core.x0[data[gvref].i] = value
+    else
+        return false
+    end
+    return true
+end
+function InfiniteOpt.update_start_value(
+    backend::ExaTranscriptionBackend,
+    vref::InfiniteOpt.DecisionVariableRef,
+    value::Function
+    )
+    # get basic info
+    data = InfiniteOpt.transformation_data(backend)
+    gvref = InfiniteOpt.GeneralVariableRef(vref)
+    # check the mapping exists
+    haskey(data.infvar_mappings, gvref) || return false
+    # do the update
+    group_idxs = InfiniteOpt.parameter_group_int_indices(gvref)
+    prefs = InfiniteOpt.raw_parameter_refs(gvref)
+    pf = InfiniteOpt.ParameterFunction(value, prefs, group_idxs)
+    itrs = map(i -> data.base_itrs[i], group_idxs)
+    len = prod(length(itr) for itr in itrs)
+    start = Vector{Float64}(undef, len)
+    for (lin_idx, i) in enumerate(Iterators.product(itrs...))
+        supp = [s for nt in i for s in Iterators.drop(values(nt), 1)]
+        start[lin_idx] = pf(supp)
+    end
+    var = data[gvref]
+    copyto!(@view(backend.core.x0[var.offset+1:var.offset+var.length]), start)
+    return true
+end
+
 # Fallback for unrecognized solver
 function warmstart_backend(
     backend::ExaTranscriptionBackend,

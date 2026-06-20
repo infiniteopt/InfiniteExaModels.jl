@@ -228,12 +228,13 @@ end
     @test all(transformation_backend(m).core.x0[i] == 42 for i in var.offset+1:var.offset+var.length)
     # test bad updates
     @variable(m, w)
+    integral(w, t)
     @test transformation_backend_ready(m)
     @test set_start_value(w, 5) isa Nothing
-    @test transformation_backend_ready(m) == false
-    build_transformation_backend!(m)
+    @test !transformation_backend_ready(m)
+    @test build_transformation_backend!(m) isa Nothing
     @variable(m, q, Infinite(t))
-    @test transformation_backend_ready(m)
+    integral(q, t)
     @test set_start_value(q, sin) isa Nothing
-    @test transformation_backend_ready(m) == false
+    @test !transformation_backend_ready(m)
 end

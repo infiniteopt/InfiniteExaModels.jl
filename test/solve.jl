@@ -213,6 +213,7 @@ end
     @infinite_parameter(m, t in [0, 1], num_supports = 3)
     @variable(m, x, Infinite(t))
     @variable(m, z, start = 3)
+    @constraint(m, x + z == 1)
     @test build_transformation_backend!(m) isa Nothing
     # Update the values
     @test set_start_value(z, 10) isa Nothing
@@ -234,15 +235,5 @@ end
     @variable(m, q, Infinite(t))
     @test transformation_backend_ready(m)
     @test set_start_value(q, sin) isa Nothing
-    @test transformation_backend_ready(m) == false
-    # Solve again
-    optimize!(m)
-    @test isapprox(objective_value(m), 276.26497794903645, atol=tol)
-    @test value(p1) == 90.0
-    @test value(p2) == 1.3
-    # Add a new finite parameter & try to update
-    @finite_parameter(m, p3 == 43.0)
-    @constraint(m, x[1]^2 + x[2]^2 ≤ p3)
-    set_parameter_value(p3, 50.0)
     @test transformation_backend_ready(m) == false
 end

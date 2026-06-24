@@ -110,10 +110,10 @@ function _add_finite_variables(
         info = InfiniteOpt.core_object(vref).info # JuMP.VariableInfo
         _ensure_continuous(info)
         lb, ub, start = _get_variable_bounds_and_start(info)
-        new_var = ExaModels.variable(core, 1, start = start, lvar = lb, uvar = ub)
+        core, new_var = ExaModels.add_var(core, 1, start = start, lvar = lb, uvar = ub)
         data.finvar_mappings[vref] = new_var[1]
     end
-    return
+    return core
 end
 
 # Add all the finite parameters from an InfiniteModel to a ExaCore
@@ -124,9 +124,10 @@ function _add_finite_parameters(
     )
     for pref in JuMP.all_variables(inf_model, InfiniteOpt.FiniteParameter)
         param_val = InfiniteOpt.parameter_value(pref)
-        data.param_mappings[pref] = ExaModels.parameter(core, [param_val])
+        core, new_par = ExaModels.add_par(core, [param_val])
+        data.param_mappings[pref] = new_par
     end
-    return
+    return core
 end
 
 # Add all the infinite variables (and derivatives) from an InfiniteModel to a ExaCore
@@ -150,10 +151,10 @@ function _add_infinite_variables(
         lb, ub, start = _get_variable_bounds_and_start(info, itrs)
         # create the ExaModels variable
         dims = Tuple(length(itr) for itr in itrs)
-        new_var = ExaModels.variable(core, dims...; start = start, lvar = lb, uvar = ub)
+        core, new_var = ExaModels.add_var(core, dims...; start = start, lvar = lb, uvar = ub)
         data.infvar_mappings[vref] = new_var
     end
-    return 
+    return core
 end
 
 # Process all the parameter function from an InfiniteModel and add to an ExaCore
@@ -175,9 +176,10 @@ function _add_parameter_functions(
             vals[first.(i)...] = pfunc(supp)
         end
         # Register the parameter function values in the ExaCore & mapping data
-        data.param_mappings[pfref] = ExaModels.parameter(core, vals)
+        core, new_par = ExaModels.add_par(core, vals)
+        data.param_mappings[pfref] = new_par
     end
-    return
+    return core
 end
 
 # Helper function for processing semi-infinite variables
@@ -285,10 +287,10 @@ function _add_point_variables(
 end
 
 # Map variable references based on their underlying type (used by `_exafy`)
-function _map_variable(vref, ::Type{InfiniteOpt.FiniteVariableIndex}, par_src, data)
+function _map_variable(vref, ::Type{InfiniteOpt.FiniteVariableIndex}, data_src, data)
     return data.finvar_mappings[vref]
 end
-function _map_variable(vref, ::Type{InfiniteOpt.PointVariableIndex}, par_src, data)
+function _map_variable(vref, ::Type{InfiniteOpt.PointVariableIndex}, data_src, data)
     if haskey(data.finvar_mappings, vref) 
         return data.finvar_mappings[vref]
     else
@@ -300,53 +302,53 @@ end
 function _map_variable(
     vref,
     ::Type{V},
-    par_src,
+    data_src,
     data
     ) where V <: Union{InfiniteOpt.InfiniteVariableIndex, InfiniteOpt.DerivativeIndex}
     group_idxs = InfiniteOpt.parameter_group_int_indices(vref)
-    idx_pars = (par_src[data.group_alias[i]] for i in group_idxs)
+    idx_pars = (data_src[data.group_alias[i]] for i in group_idxs)
     return data.infvar_mappings[vref][idx_pars...]
 end
-function _map_variable(vref, ::Type{InfiniteOpt.SemiInfiniteVariableIndex}, par_src, data)
+function _map_variable(vref, ::Type{InfiniteOpt.SemiInfiniteVariableIndex}, data_src, data)
     if !haskey(data.semivar_info, vref)
         _process_semi_infinite_var(vref, data)
     end
     ivar, inds = data.semivar_info[vref]
-    idx_pars = (i isa Int ? i : par_src[i] for i in inds)
+    idx_pars = (i isa Int ? i : data_src[i] for i in inds)
     return ivar[idx_pars...]
 end
-function _map_variable(vref, ::Type{<:InfiniteOpt.InfiniteParameterIndex}, par_src, data)
-    return par_src[data.param_alias[vref]]
+function _map_variable(vref, ::Type{<:InfiniteOpt.InfiniteParameterIndex}, data_src, data)
+    return data_src[data.param_alias[vref]]
 end
-function _map_variable(vref, ::Type{InfiniteOpt.FiniteParameterIndex}, par_src, data)
+function _map_variable(vref, ::Type{InfiniteOpt.FiniteParameterIndex}, data_src, data)
     return data.param_mappings[vref][1]
 end
-function _map_variable(vref, ::Type{InfiniteOpt.ParameterFunctionIndex}, par_src, data)
+function _map_variable(vref, ::Type{InfiniteOpt.ParameterFunctionIndex}, data_src, data)
     group_idxs = InfiniteOpt.parameter_group_int_indices(vref)
-    idx_pars = (par_src[data.group_alias[i]] for i in group_idxs)
+    idx_pars = (data_src[data.group_alias[i]] for i in group_idxs)
     return data.param_mappings[vref][idx_pars...]
 end
-function _map_variable(vref, IdxType, par_src, data)
+function _map_variable(vref, IdxType, data_src, data)
     error("Unable to add `$vref` to an ExaModel, it's index type `$IdxType`" *
           " is not yet supported by InfiniteExaModels.")
 end
 
-# Convert as InfiniteOpt expression into a ExaModel expression using the ParIndexed `par_src`
-function _exafy(vref::InfiniteOpt.GeneralVariableRef, par_src, data)
-    return _map_variable(vref, vref.index_type, par_src, data)
+# Convert as InfiniteOpt expression into a ExaModel expression using the DataIndexed `data_src`
+function _exafy(vref::InfiniteOpt.GeneralVariableRef, data_src, data)
+    return _map_variable(vref, vref.index_type, data_src, data)
 end
-function _exafy(c::Number, par_src, data)
+function _exafy(c::Number, data_src, data)
     return c
 end
 function _exafy(
     aff::JuMP.GenericAffExpr{C, InfiniteOpt.GeneralVariableRef}, 
-    par_src, 
+    data_src, 
     data
     ) where {C}
     c = JuMP.constant(aff)
     if !isempty(aff.terms)
         ex = sum(begin
-            v_ex = _exafy(v, par_src, data)
+            v_ex = _exafy(v, data_src, data)
             isone(c) ? v_ex : c * v_ex
             end for (c, v) in JuMP.linear_terms(aff)
             )
@@ -357,18 +359,18 @@ function _exafy(
 end
 function _exafy(
     quad::JuMP.GenericQuadExpr{C, InfiniteOpt.GeneralVariableRef}, 
-    par_src, 
+    data_src, 
     data
     ) where {C}
-    aff = _exafy(quad.aff, par_src, data)
+    aff = _exafy(quad.aff, data_src, data)
     if !isempty(quad.terms)
         ex = sum(begin 
             if v1 == v2
-                v_ex = _exafy(v1, par_src, data) 
+                v_ex = _exafy(v1, data_src, data) 
                 isone(c) ? abs2(v_ex) : c * abs2(v_ex)
             else
-                v1_ex = _exafy(v1, par_src, data) 
-                v2_ex = _exafy(v2, par_src, data) 
+                v1_ex = _exafy(v1, data_src, data) 
+                v2_ex = _exafy(v2, data_src, data) 
                 isone(c) ? v1_ex * v2_ex : c * v1_ex * v2_ex
             end
             end for (c, v1, v2) in JuMP.quad_terms(quad)
@@ -380,10 +382,10 @@ function _exafy(
 end
 function _exafy(
     nl::JuMP.GenericNonlinearExpr{InfiniteOpt.GeneralVariableRef}, 
-    par_src, 
+    data_src, 
     data
     )
-    return _nl_op(nl.head)((_exafy(a, par_src, data) for a in nl.args)...)
+    return _nl_op(nl.head)((_exafy(a, data_src, data) for a in nl.args)...)
 end
 
 # Finalize exafied expressions to avoid scalars
@@ -448,21 +450,21 @@ function _add_constraints(
             itr = filter(i -> _support_in_restriction(restriction, i, data), itr)
         end
         # create the ExaModels expression tree based on expr
-        par_src = ExaModels.ParSource()
-        em_expr = _finalize_expr(_exafy(expr, par_src, data))
+        data_src = ExaModels.DataSource()
+        em_expr = _finalize_expr(_exafy(expr, data_src, data))
         # get the constraint bounds
         lb, ub = _get_constr_bounds(set)
         # create the ExaModels constraint
-        con = ExaModels.constraint(core, em_expr, itr, lcon = lb, ucon = ub)
+        core, con = ExaModels.add_con(core, em_expr, itr, lcon = lb, ucon = ub)
         data.constraint_mappings[cref] = con
     end
-    return
+    return core
 end
 
 # Make dispatch type to pass the data needed by `make_reduced_expr`
 struct _DerivReductionBackendInfo <: InfiniteOpt.AbstractTransformationBackend
     data::ExaMappingData
-    par_src::ExaModels.ParSource
+    data_src::ExaModels.DataSource
 end
 
 # Extend make_reduced_expr to create an ExaModel expression
@@ -475,7 +477,7 @@ function InfiniteOpt.make_reduced_expr(
     )
     group_idx = InfiniteOpt.parameter_group_int_index(pref)
     data = dispatch_data.data
-    par_src = dispatch_data.par_src
+    data_src = dispatch_data.data_src
     alias = data.group_alias[group_idx]
     if vref.index_type == InfiniteOpt.SemiInfiniteVariableIndex
         @assert haskey(data.semivar_info, vref)
@@ -486,7 +488,7 @@ function InfiniteOpt.make_reduced_expr(
             elseif i == alias
                 idx
             else
-                par_src[i] 
+                data_src[i] 
             end
             end for i in inds)
         return ivar[idx_pars...]
@@ -497,7 +499,7 @@ function InfiniteOpt.make_reduced_expr(
             if g_alias == alias
                 idx
             else
-                par_src[g_alias]
+                data_src[g_alias]
             end 
             end for i in group_idxs)
         return data.infvar_mappings[vref][idx_pars...]
@@ -541,22 +543,22 @@ function _add_derivative_approximations(
             itr = pref_itr
         end
         # make the ExaModel expression tree
-        par_src = ExaModels.ParSource()
+        data_src = ExaModels.DataSource()
         em_expr = InfiniteOpt.make_indexed_derivative_expr(
             dref, 
             vref, 
             pref, 
             order, 
-            par_src[data.group_alias[pref_group]], 
+            data_src[data.group_alias[pref_group]], 
             supps, 
-            _DerivReductionBackendInfo(data, par_src),
+            _DerivReductionBackendInfo(data, data_src),
             method,
-            (par_src[a] for a in aliases)...
+            (data_src[a] for a in aliases)...
             )
         # add the constraint
-        ExaModels.constraint(core, em_expr, itr)
+        core, _ = ExaModels.add_con(core, em_expr, itr)
     end
-    return
+    return core
 end
 
 # Add the constraints needed for piecewise constant control variables
@@ -587,15 +589,15 @@ function _add_collocation_restrictions(
             aliases = (data.group_alias[g] for g in group_idxs)
             itrs = (g == pref_group ? pref_itr : data.base_itrs[g] for g in group_idxs)
             itr = vec([merge(i...) for i in Iterators.product(itrs...)])
-            par_src = ExaModels.ParSource()
-            idx_pars1 = (a == pref_alias ? par_src[:i1] : par_src[a] for a in aliases)
-            idx_pars2 = (a == pref_alias ? par_src[:i2] : par_src[a] for a in aliases)
+            data_src = ExaModels.DataSource()
+            idx_pars1 = (a == pref_alias ? data_src[:i1] : data_src[a] for a in aliases)
+            idx_pars2 = (a == pref_alias ? data_src[:i2] : data_src[a] for a in aliases)
             ivar = data.infvar_mappings[vref]
             em_expr = ivar[idx_pars1...] - ivar[idx_pars2...]
-            ExaModels.constraint(core, em_expr, itr)
+            core, _ = ExaModels.add_con(core, em_expr, itr)
         end
     end
-    return
+    return core
 end
 
 # Define warning message for when measure heuristics fail
@@ -609,8 +611,7 @@ const _ObjMeasureExpansionWarn = string(
 # Write a finite expression `expr` in a single objective term (this is a generic fallback)
 function _add_generic_objective_term(core, expr, data)
     em_expr = _finalize_expr(_exafy(expr, (;), data))
-    ExaModels.objective(core, em_expr, [(;)])
-    return
+    return ExaModels.add_obj(core, em_expr, [(;)])[1]
 end
 
 # Helper function for generate an iterator based on measure data 
@@ -693,15 +694,14 @@ function _add_objective_aff_term(core, coef, vref, ::Type{InfiniteOpt.MeasureInd
     # process the measure structure recursively as needed
     mexpr, itr = _process_measure_sum(vref, data)
     # prepare the examodel expression tree
-    par_src = ExaModels.ParSource()
-    em_expr = par_src.c * _exafy(coef * mexpr, par_src, data)
+    data_src = ExaModels.DataSource()
+    em_expr = data_src.c * _exafy(coef * mexpr, data_src, data)
     # add the term to the objective
-    ExaModels.objective(core, _finalize_expr(em_expr), itr)
-    return
+    core, _ = ExaModels.add_obj(core, _finalize_expr(em_expr), itr)
+    return core
 end
 function _add_objective_aff_term(core, coef, vref, _, data)
-    _add_generic_objective_term(core, coef * vref, data)
-    return
+    return _add_generic_objective_term(core, coef * vref, data)
 end
 
 # Add the objective from an InfiniteModel to an ExaCore
@@ -716,8 +716,7 @@ function _add_objective(
         @warn _ObjMeasureExpansionWarn
     end
     new_expr = InfiniteOpt.expand_measures(expr, inf_model)
-    _add_generic_objective_term(core, new_expr, data)
-    return
+    return _add_generic_objective_term(core, new_expr, data)
 end
 function _add_objective(
     core::ExaModels.ExaCore,
@@ -725,8 +724,7 @@ function _add_objective(
     data::ExaMappingData, 
     ::InfiniteOpt.InfiniteModel
     )
-    _add_objective_aff_term(core, 1.0, vref, data)
-    return
+    return _add_objective_aff_term(core, 1.0, vref, data)
 end
 function _add_objective(
     core::ExaModels.ExaCore,
@@ -736,13 +734,13 @@ function _add_objective(
     )
     # TODO should we check if there are a lot of terms?
     for (coef, vref) in JuMP.linear_terms(aff)
-        _add_objective_aff_term(core, coef, vref, data)
+        core = _add_objective_aff_term(core, coef, vref, data)
     end
     c = JuMP.constant(aff)
     if !iszero(c)
-        ExaModels.objective(core, ExaModels.Null(c))
+        core, _ = ExaModels.add_obj(core, ExaModels.Null(c))
     end
-    return
+    return core
 end
 function _add_objective(
     core::ExaModels.ExaCore,
@@ -756,16 +754,16 @@ function _add_objective(
             # TODO see if we can avoid the generic fallback in this case
             @warn _ObjMeasureExpansionWarn
             new_expr = InfiniteOpt.expand_measures(coef * vref1 * vref2, inf_model)
-            _add_generic_objective_term(core, new_expr, data)
+            core = _add_generic_objective_term(core, new_expr, data)
         elseif vref1.index_type == InfiniteOpt.MeasureIndex
-            _add_objective_aff_term(core, coef * vref2, vref1, data)
+            core = _add_objective_aff_term(core, coef * vref2, vref1, data)
         else
-            _add_objective_aff_term(core, coef * vref1, vref2, data)
+            core = _add_objective_aff_term(core, coef * vref1, vref2, data)
         end
     end
     # add the affine terms
-    _add_objective(core, quad.aff, data, inf_model)
-    return
+    core = _add_objective(core, quad.aff, data, inf_model)
+    return core
 end
 # TODO add heuristics for nonlinear expressions
 
@@ -778,23 +776,23 @@ function build_exa_core!(
     # initial setup
     _build_base_iterators(data, inf_model)
     # add the variables and appropriate mappings
-    _add_finite_parameters(core, data, inf_model)
-    _add_finite_variables(core, data, inf_model)
-    _add_infinite_variables(core, data, inf_model) # includes derivatives
-    _add_parameter_functions(core, data, inf_model)
+    core = _add_finite_parameters(core, data, inf_model)
+    core = _add_finite_variables(core, data, inf_model)
+    core = _add_infinite_variables(core, data, inf_model) # includes derivatives
+    core = _add_parameter_functions(core, data, inf_model)
     _add_semi_infinite_variables(core, data, inf_model)
     _add_point_variables(core, data, inf_model)
     # add the constraints
-    _add_constraints(core, data, inf_model)
-    _add_derivative_approximations(core, data, inf_model)
-    _add_collocation_restrictions(core, data, inf_model)
+    core = _add_constraints(core, data, inf_model)
+    core = _add_derivative_approximations(core, data, inf_model)
+    core = _add_collocation_restrictions(core, data, inf_model)
     # add the objective if there is one
     expr = JuMP.objective_function(inf_model)
     sense = JuMP.objective_sense(inf_model)
     if sense != _MOI.FEASIBILITY_SENSE
-        _add_objective(core, expr, data, inf_model)
+        core = _add_objective(core, expr, data, inf_model)
     end
-    return
+    return core
 end
 
 """
@@ -814,9 +812,8 @@ function ExaModels.ExaCore(
     )
     # TODO add support for other float types once InfiniteOpt does
     minimize = JuMP.objective_sense(inf_model) == _MOI.MIN_SENSE
-    core = ExaModels.ExaCore(; backend = backend, minimize = minimize)
-    build_exa_core!(core, data, inf_model)
-    return core
+    core = ExaModels.ExaCore(; backend = backend, minimize = minimize, concrete = Val(true))
+    return build_exa_core!(core, data, inf_model)
 end
 
 """

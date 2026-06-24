@@ -19,7 +19,7 @@
     d1 = deriv(y, t)
     d2 = deriv(q, x, x)
     @variable(m, z, start = 10)
-    c = ExaModels.ExaCore()
+    c = ExaModels.ExaCore(concrete = Val(true))
     data = ExaMappingData()
     # test building up supports
     @testset "_build_base_iterators" begin
@@ -29,7 +29,7 @@
     end
     # test mapping finite variables
     @testset "_add_finite_variables" begin
-        @test InfiniteExaModels._add_finite_variables(c, data, m) isa Nothing
+        c = InfiniteExaModels._add_finite_variables(c, data, m)
         v = ExaModels.Var(1)
         @test data.finvar_mappings[z] == v
         @test c.x0[v.i] == 10
@@ -38,7 +38,7 @@
     end
     # test mapping infinite variables
     @testset "_add_infinite_variables" begin
-        @test InfiniteExaModels._add_infinite_variables(c, data, m) isa Nothing
+        c = InfiniteExaModels._add_infinite_variables(c, data, m)
         # test y variable mapping
         yvar = data.infvar_mappings[y]
         @test yvar.length == 5
@@ -214,5 +214,5 @@ end
     @variable(model, y, Infinite(t))
     @constraint(model, y^2 >= 2, DomainRestriction(t -> t >= 0.5, t))
     @test ExaModel(model) isa ExaModel
-    @test length(ExaModel(model).cons.itr) == sum(supports(t) .>= 0.5)
+    @test length(ExaModel(model).cons[1].itr) == sum(supports(t) .>= 0.5)
 end

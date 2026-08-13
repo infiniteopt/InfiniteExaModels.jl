@@ -31,6 +31,8 @@ struct ExaMappingData
             Vector{Any}
         }
     }
+    # Finite template constraint metadata
+    indexed_var_to_exa_var::Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Variable}
     
     # Default constructor
     function ExaMappingData()
@@ -52,6 +54,7 @@ struct ExaMappingData
                     Vector{Any}
                 }
             }(),
+            Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Variable}()
         )
     end
 end

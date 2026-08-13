@@ -216,3 +216,20 @@ end
     @test ExaModel(model) isa ExaModel
     @test length(ExaModel(model).cons[1].itr) == sum(supports(t) .>= 0.5)
 end
+
+@testset "User-defined Nonlinear Operators" begin
+    model = InfiniteModel()
+    @infinite_parameter(model, t in [0, 1], num_supports = 5)
+    @variable(model, y, Infinite(t))
+    add_nonlinear_operator(model, 1, my_f, my_∇f, my_∇²f)
+    @objective(model, Min, ∫(my_f(y), t))
+    # initial add
+    @test ExaModel(model) isa ExaModel
+    @test InfiniteExaModels._op_mappings[:my_f] == my_f
+    # repeated add
+    @test ExaModel(model) isa ExaModel
+    @test InfiniteExaModels._op_mappings[:my_f] == my_f
+    # bad add
+    add_nonlinear_operator(model, 1, my_f, name = :my_f2)
+    @test_throws ErrorException ExaModel(model)
+end

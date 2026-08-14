@@ -372,7 +372,7 @@ function _map_variable(vref, ::Type{InfiniteOpt.SemiInfiniteVariableIndex}, data
     return ivar[idx_pars...]
 end
 function _map_variable(vref, ::Type{<:InfiniteOpt.InfiniteParameterIndex}, data)
-    return ExaModels.DataSource[data.param_alias[vref]]
+    return ExaModels.DataSource()[data.param_alias[vref]]
 end
 function _map_variable(vref, ::Type{InfiniteOpt.FiniteParameterIndex}, data)
     return data.param_mappings[vref][1]

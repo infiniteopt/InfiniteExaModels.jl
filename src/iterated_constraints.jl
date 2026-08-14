@@ -110,6 +110,12 @@ function _process_variable_array(
     )
     return _process_variable_array(obj.data, data)
 end
+function _process_variable_array(
+    obj::JuMP.Containers.SparseAxisArray{<:InfiniteOpt.GeneralVariableRef},
+    data::ExaMappingData
+    )
+    return _process_variable_array(collect(values(obj.data)), data)
+end
 function _process_variable_array(obj, data::ExaMappingData)
     return false
 end

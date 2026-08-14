@@ -92,6 +92,23 @@ end
     end
 end
 
+@testset "User-Defined Operators" begin
+    model = InfiniteModel(Ipopt.Optimizer)
+    set_silent(model)
+    @infinite_parameter(model, t in [0, 1], num_supports = 5)
+    @variable(model, y, Infinite(t))
+    add_nonlinear_operator(model, 1, my_f, my_∇f, my_∇²f)
+    @objective(model, Min, ∫(my_f(y), t))
+    optimize!(model)
+    obj = objective_value(model)
+    yval = value(y)
+    @test set_transformation_backend(model, ExaTranscriptionBackend(IpoptSolver)) isa Nothing
+    @test set_silent(model) isa Nothing
+    @test optimize!(model).status == :first_order
+    @test isapprox(obj, objective_value(model), atol = tol)
+    @test all(isapprox.(yval, value(y), atol = tol))
+end
+
 @testset "Parameter Function Problem" begin
     # Test custom function for parameter function
     function paramFunc2(t, s, tk)

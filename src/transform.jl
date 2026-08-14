@@ -1,3 +1,6 @@
+ # Temporoary hack
+ using ExaModels: Constant
+
 # Create the support iterators for each infinite parameter group and add to the mapping data
 function _build_base_iterators(
     data::ExaMappingData,
@@ -320,6 +323,26 @@ function _index_params(
     data::ExaMappingData
     )
     return ()
+end 
+ 
+# Add user-defined operators to ExaModels
+function _add_user_operators(inf_model::InfiniteOpt.InfiniteModel)
+    for op in InfiniteOpt.added_nonlinear_operators(inf_model)
+        if haskey(_op_mappings, op.name)
+            continue
+        elseif op.dim > 1
+            error("InfiniteExaModels.jl does not currently support multivariate user-defined nonlinear operators. ",
+                  "If you need support for this operator, please open an issue.")
+        elseif op.∇²f === nothing || op.∇f === nothing
+            error("InfiniteExaModels.jl does not support user-defined nonlinear operators without a gradient and Hessian.")
+        else
+            @eval begin 
+                ExaModels.@register_univariate($(op).f, $(op).∇f, $(op).∇²f) 
+            end
+            _op_mappings[op.name] = op.f
+        end
+    end
+    return
 end
 
 # Map variable references based on their underlying type (used by `_exafy`)
@@ -816,6 +839,8 @@ function build_exa_core!(
     core = _add_parameter_functions(core, data, inf_model)
     _add_semi_infinite_variables(core, data, inf_model)
     _add_point_variables(core, data, inf_model)
+    # account for user-defined nonlinear operators
+    _add_user_operators(inf_model)
     # add the constraints
     if process_finite_indices_of_named_constraints
         core = _process_array_objects(core, data, inf_model)

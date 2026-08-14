@@ -1,6 +1,11 @@
 using Test, InfiniteOpt, InfiniteExaModels, MadNLP, NLPModelsIpopt
 using ExaModels, Ipopt, Suppressor, NLPModels
 
+# Global test functions
+my_f(x) = x^2
+my_∇f(x) = 2x
+my_∇²f(x) = 2
+
 println("************************************************")
 println("                BEGINNING TESTS                 ")
 println("************************************************\n")

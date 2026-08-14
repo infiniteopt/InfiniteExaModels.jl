@@ -90,7 +90,7 @@ function _get_repeated_idx(em_var::ExaModels.Variable, repeated_var::ExaModels.V
 end
 
 function _process_variable_array(
-    obj::Vector{InfiniteOpt.GeneralVariableRef}, # TODO generalize to other arrays
+    obj::Array{<:InfiniteOpt.GeneralVariableRef},
     data::ExaMappingData
     )
     v_first = first(obj)
@@ -103,6 +103,12 @@ function _process_variable_array(
         data.indexed_var_to_exa_var[v] = indexed_var
     end
     return true
+end
+function _process_variable_array(
+    obj::JuMP.Containers.DenseAxisArray{<:InfiniteOpt.GeneralVariableRef},
+    data::ExaMappingData
+    )
+    return _process_variable_array(obj.data, data)
 end
 function _process_variable_array(obj, data::ExaMappingData)
     return false

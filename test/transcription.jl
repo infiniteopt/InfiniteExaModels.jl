@@ -232,4 +232,7 @@ end
     # bad add
     add_nonlinear_operator(model, 1, my_f, name = :my_f2)
     @test_throws ErrorException ExaModel(model)
+    # bad add
+    add_nonlinear_operator(model, 2, (x, y) -> x^2 + y^2)
+    @test_throws ErrorException ExaModel(model)
 end

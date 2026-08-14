@@ -1,3 +1,6 @@
+ # Temporoary hack
+ using ExaModels: Constant
+
 # Create the support iterators for each infinite parameter group and add to the mapping data
 function _build_base_iterators(
     data::ExaMappingData,
@@ -298,7 +301,6 @@ function _add_user_operators(inf_model::InfiniteOpt.InfiniteModel)
             error("InfiniteExaModels.jl does not support user-defined nonlinear operators without a gradient and Hessian.")
         else
             @eval begin 
-                Constant = ExaModels.Constant # temporary hack until ExaModels is fixed upstream
                 ExaModels.@register_univariate($(op).f, $(op).∇f, $(op).∇²f) 
             end
             _op_mappings[op.name] = op.f

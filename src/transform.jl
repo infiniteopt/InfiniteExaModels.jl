@@ -295,7 +295,7 @@ function _add_user_operators(inf_model::InfiniteOpt.InfiniteModel)
         if haskey(_op_mappings, op.name)
             continue
         elseif op.dim > 1
-            error("InfiniteExaModels.jl does not currently support nonunivariate user-defined nonlinear operators. ",
+            error("InfiniteExaModels.jl does not currently support multivariate user-defined nonlinear operators. ",
                   "If you need support for this operator, please open an issue.")
         elseif op.∇²f === nothing || op.∇f === nothing
             error("InfiniteExaModels.jl does not support user-defined nonlinear operators without a gradient and Hessian.")

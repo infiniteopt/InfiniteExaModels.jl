@@ -32,7 +32,7 @@ struct ExaMappingData
         }
     }
     # Finite template constraint metadata
-    indexed_var_to_exa_var::Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Variable}
+    indexed_var_to_exa_var::Dict{InfiniteOpt.GeneralVariableRef, Union{ExaModels.Variable, ExaModels.Parameter}}
     
     # Default constructor
     function ExaMappingData()
@@ -54,7 +54,7 @@ struct ExaMappingData
                     Vector{Any}
                 }
             }(),
-            Dict{InfiniteOpt.GeneralVariableRef, ExaModels.Variable}()
+            Dict{InfiniteOpt.GeneralVariableRef, Union{ExaModels.Variable, ExaModels.Parameter}}(),
         )
     end
 end
@@ -112,7 +112,7 @@ mutable struct ExaTranscriptionBackend{B} <: InfiniteOpt.AbstractTransformationB
 end
 
 # Constructors
-function ExaTranscriptionBackend(; backend = nothing)
+function ExaTranscriptionBackend(; backend = nothing, )
     return ExaTranscriptionBackend(
         nothing,
         nothing,
@@ -152,10 +152,11 @@ InfiniteOpt.transformation_data(backend::ExaTranscriptionBackend) = backend.data
 # Build out the backend
 function InfiniteOpt.build_transformation_backend!(
     model::InfiniteOpt.InfiniteModel,
-    backend::ExaTranscriptionBackend
+    backend::ExaTranscriptionBackend;
+    kwargs...
     )
     empty!(backend)
-    backend.core = ExaModels.ExaCore(model, backend.data; backend = backend.backend)
+    backend.core = ExaModels.ExaCore(model, backend.data; backend = backend.backend, kwargs...)
     backend.model = ExaModels.ExaModel(backend.core)
 end
 

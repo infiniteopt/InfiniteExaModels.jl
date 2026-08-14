@@ -415,6 +415,32 @@ function _exafy(
     return _nl_op(nl.head)((_exafy(a, data) for a in nl.args)...)
 end
 
+# Check if NamedTuple iterator respects the restriction
+function _support_in_restriction(restriction, itr, data)
+    supp = [itr[data.param_alias[p]] for p in restriction.parameter_refs]
+    return restriction(supp)
+end
+
+# Prepare the constraint iterator over the infinite parameters
+function _get_constraint_iterator(cref, data)
+    group_idxs = InfiniteOpt.parameter_group_int_indices(cref)
+    # prepare the iterator of NamedTuples (contains support values, iterator values, and constants from parameter functions)
+    if isempty(group_idxs) # we have a finite constraint
+        itr = [(;)]
+    elseif length(group_idxs) == 1 # we only depend on one independent infinite parameter
+        itr = data.base_itrs[first(group_idxs)]
+    else # we depend on multiple independent infinite parameters
+        itrs = map(i -> data.base_itrs[i], group_idxs)
+        itr = vec([merge(i...) for i in Iterators.product(itrs...)])
+    end
+    # Remove any elements of the iterator that violate the domain restriction
+    if InfiniteOpt.has_domain_restriction(cref)
+        restriction = InfiniteOpt.domain_restriction(cref)
+        itr = filter(i -> _support_in_restriction(restriction, i, data), itr)
+    end
+    return itr
+end
+
 # Finalize exafied expressions to avoid scalars
 _finalize_expr(expr) = expr
 _finalize_expr(c::Real) = ExaModels.Null(c)
@@ -437,12 +463,6 @@ function _get_constr_bounds(set)
           "if you need support for this constraint type, please open an issue.")
 end
 
-# Check if NamedTuple iterator respects the restriction
-function _support_in_restriction(restriction, itr, data)
-    supp = [itr[data.param_alias[p]] for p in restriction.parameter_refs]
-    return restriction(supp)
-end
-
 # Add all the constraints from an InfiniteModel to an ExaCore
 function _add_constraints(
     core::ExaModels.ExaCore, 
@@ -452,6 +472,7 @@ function _add_constraints(
     for cref in JuMP.all_constraints(inf_model)
         # skip if the constraint is a variable bound or type
         InfiniteOpt.is_variable_domain_constraint(cref) && continue
+        haskey(data.constraint_mappings, cref) && continue
         # parse the basic information
         constr = JuMP.constraint_object(cref)
         if isempty(inf_model.constraints[JuMP.index(cref)].measure_indices)
@@ -461,21 +482,8 @@ function _add_constraints(
             expr = InfiniteOpt.expand_measures(JuMP.jump_function(constr), inf_model)
         end
         set = JuMP.moi_set(constr)
-        group_idxs = InfiniteOpt.parameter_group_int_indices(cref)
-        # prepare the iterator of NamedTuples (contains support values, iterator values, and constants from parameter functions)
-        if isempty(group_idxs) # we have a finite constraint
-            itr = [(;)]
-        elseif length(group_idxs) == 1 # we only depend on one independent infinite parameter
-            itr = data.base_itrs[first(group_idxs)]
-        else # we depend on multiple independent infinite parameters
-            itrs = map(i -> data.base_itrs[i], group_idxs)
-            itr = vec([merge(i...) for i in Iterators.product(itrs...)])
-        end
-        # Remove any elements of the iterator that violate the domain restriction
-        if InfiniteOpt.has_domain_restriction(cref)
-            restriction = InfiniteOpt.domain_restriction(cref)
-            itr = filter(i -> _support_in_restriction(restriction, i, data), itr)
-        end
+       # prepare the constraint iterator
+        itr = _get_constraint_iterator(cref, data)
         # create the ExaModels expression tree based on expr
         em_expr = _finalize_expr(_exafy(expr, data))
         # get the constraint bounds
@@ -796,7 +804,8 @@ end
 function build_exa_core!(
     core::ExaModels.ExaCore, 
     data::ExaMappingData,
-    inf_model::InfiniteOpt.InfiniteModel
+    inf_model::InfiniteOpt.InfiniteModel;
+    process_finite_indices_of_named_constraints = false
     )
     # initial setup
     _build_base_iterators(data, inf_model)
@@ -808,6 +817,9 @@ function build_exa_core!(
     _add_semi_infinite_variables(core, data, inf_model)
     _add_point_variables(core, data, inf_model)
     # add the constraints
+    if process_finite_indices_of_named_constraints
+        core = _process_array_objects(core, data, inf_model)
+    end
     core = _add_constraints(core, data, inf_model)
     core = _add_derivative_approximations(core, data, inf_model)
     core = _add_collocation_restrictions(core, data, inf_model)
@@ -824,41 +836,71 @@ end
     ExaModels.ExaCore(
         inf_model::InfiniteOpt.InfiniteModel,
         data::ExaMappingData;
-        [backend = nothing]
+        [backend = nothing,
+        process_finite_indices_of_named_constraints = false] # experimental
     )::ExaModels.ExaCore
 
 Create `ExaModels.ExaCore` from `inf_model` using the provided
-`ExaMappingData` to store the variable and constraint mappings.
+`ExaMappingData` to store the variable and constraint mappings. 
+Optionally, try to aggregate common algebraic constraint structures
+over a named constraint array (e.g., `@constraint(model, con[i=1:N], ...)`)
+by setting `process_finite_indices_of_named_constraints = true`. This is an 
+experimental feature that may encounter issues and may be removed/modified in the future.
 """
 function ExaModels.ExaCore(
     inf_model::InfiniteOpt.InfiniteModel,
     data::ExaMappingData;
-    backend = nothing
+    backend = nothing,
+    process_finite_indices_of_named_constraints = false
     )
     # TODO add support for other float types once InfiniteOpt does
     minimize = JuMP.objective_sense(inf_model) == _MOI.MIN_SENSE
     core = ExaModels.ExaCore(; backend = backend, minimize = minimize, concrete = Val(true))
-    return build_exa_core!(core, data, inf_model)
+    return build_exa_core!(
+        core,
+        data, 
+        inf_model; process_finite_indices_of_named_constraints = process_finite_indices_of_named_constraints
+    )
 end
 
 """
     ExaModels.ExaModel(
         inf_model::InfiniteOpt.InfiniteModel,
         [data::ExaMappingData];
-        [backend = nothing]
+        [backend = nothing,
+        process_finite_indices_of_named_constraints = false] # experimental
     )::ExaModels.ExaModel
 
 Create an `ExaModels.ExaModel` from `inf_model` and store the mappings in
 `data`. If `data` is not provided, the mappings cannot be readily extracted.
+Optionally, try to aggregate common algebraic constraint structures
+over a named constraint array (e.g., `@constraint(model, con[i=1:N], ...)`)
+by setting `process_finite_indices_of_named_constraints = true`. This is an 
+experimental feature that may encounter issues and may be removed/modified in the future.
 """
 function ExaModels.ExaModel(
     inf_model::InfiniteOpt.InfiniteModel,
     data::ExaMappingData;
-    backend = nothing
+    backend = nothing,
+    process_finite_indices_of_named_constraints = false
     )
-    core = ExaModels.ExaCore(inf_model, data; backend = backend)
+    core = ExaModels.ExaCore(
+        inf_model,
+        data; 
+        backend = backend, 
+        process_finite_indices_of_named_constraints = process_finite_indices_of_named_constraints
+    )
     return ExaModels.ExaModel(core)
 end
-function ExaModels.ExaModel(inf_model::InfiniteOpt.InfiniteModel; backend = nothing)
-    return ExaModels.ExaModel(inf_model, ExaMappingData(), backend = backend)
+function ExaModels.ExaModel(
+    inf_model::InfiniteOpt.InfiniteModel;
+    backend = nothing,
+    process_finite_indices_of_named_constraints = false
+)
+    return ExaModels.ExaModel(
+        inf_model,
+        ExaMappingData();
+        backend = backend,
+        process_finite_indices_of_named_constraints = process_finite_indices_of_named_constraints
+    )
 end

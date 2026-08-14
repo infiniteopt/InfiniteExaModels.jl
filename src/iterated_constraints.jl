@@ -110,7 +110,7 @@ end
 
 function _process_constraint_array(
     core::ExaModels.ExaCore,
-    obj::Vector{InfiniteOpt.InfOptConstraintRef}, # TODO generalize to other arrays
+    obj::Vector{InfiniteOpt.InfOptConstraintRef},
     data::ExaMappingData
     )
     # encode each constraint
@@ -197,6 +197,20 @@ function _process_constraint_array(
         data.constraint_mappings[cref] = ExaModels.Constraint(con.f, sliced_itr, offset, (1:inf_len,), nothing)
     end
     return true, core
+end
+function _process_constraint_array(
+    core::ExaModels.ExaCore,
+    obj::AbstractArray{<:InfiniteOpt.InfOptConstraintRef},
+    data::ExaMappingData
+    )
+    return _process_constraint_array(core, vec(collect(values(obj))), data)
+end
+function _process_constraint_array(
+    core::ExaModels.ExaCore,
+    obj::JuMP.Containers.SparseAxisArray{<:InfiniteOpt.InfOptConstraintRef},
+    data::ExaMappingData
+    )
+    return _process_constraint_array(core, collect(values(obj.data)), data)
 end
 function _process_constraint_array(core::ExaModels.ExaCore, obj, data::ExaMappingData)
     return false, core # fallback to ignore the unsupported/irrelevant object type

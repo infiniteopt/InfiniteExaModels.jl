@@ -107,14 +107,22 @@ end
 function _add_finite_variables(
     core::ExaModels.ExaCore, 
     data::ExaMappingData,
-    inf_model::InfiniteOpt.InfiniteModel
+    inf_model::InfiniteOpt.InfiniteModel;
+    create_variable_groups::Bool = false
     )
-    for vref in JuMP.all_variables(inf_model, InfiniteOpt.FiniteVariable)
+    vrefs = JuMP.all_variables(inf_model, InfiniteOpt.FiniteVariable)
+    if create_variable_groups
+        ex_var = ExaModels.Variable((1:length(vrefs),), length(vrefs), core.nvar, :x, nothing)
+    end
+    for vref in vrefs
         info = InfiniteOpt.core_object(vref).info # JuMP.VariableInfo
         _ensure_continuous(info)
         lb, ub, start = _get_variable_bounds_and_start(info)
         core, new_var = ExaModels.add_var(core, 1, start = start, lvar = lb, uvar = ub)
         data.finvar_mappings[vref] = new_var[1]
+        if create_variable_groups
+            data.var_to_grouped_var[vref] = ex_var
+        end
     end
     return core
 end
@@ -123,12 +131,20 @@ end
 function _add_finite_parameters(
     core::ExaModels.ExaCore, 
     data::ExaMappingData,
-    inf_model::InfiniteOpt.InfiniteModel
+    inf_model::InfiniteOpt.InfiniteModel;
+    create_parameter_groups::Bool = false
     )
-    for pref in JuMP.all_variables(inf_model, InfiniteOpt.FiniteParameter)
+    prefs = JuMP.all_variables(inf_model, InfiniteOpt.FiniteParameter)
+    if create_parameter_groups
+        ex_par = ExaModels.Parameter((1:length(prefs),), length(prefs), core.npar, nothing)
+    end
+    for pref in prefs
         param_val = InfiniteOpt.parameter_value(pref)
         core, new_par = ExaModels.add_par(core, [param_val])
         data.param_mappings[pref] = new_par
+        if create_parameter_groups
+            data.var_to_grouped_var[pref] = ex_par
+        end
     end
     return core
 end
@@ -137,14 +153,28 @@ end
 function _add_infinite_variables(
     core::ExaModels.ExaCore, 
     data::ExaMappingData,
-    inf_model::InfiniteOpt.InfiniteModel
+    inf_model::InfiniteOpt.InfiniteModel;
+    create_variable_groups::Bool = false
     )
     # Get the raw variables
     ivrefs = JuMP.all_variables(inf_model, InfiniteOpt.InfiniteVariable)
     InfiniteOpt.reformulate_high_order_derivatives!(inf_model)
     drefs = InfiniteOpt.all_derivatives(inf_model)
+    vrefs = append!(ivrefs, drefs)
+    # sort by infinite parameter groups (required to capture repeated finite patterns)
+    if create_variable_groups && length(data.base_itrs) > 1
+        all_group_idxs = map(v -> InfiniteOpt.parameter_group_int_indices(v), vrefs)
+        sorted_int_idxs = sortperm(all_group_idxs)
+        permute!(vrefs, sorted_int_idxs)
+        permute!(all_group_idxs, sorted_int_idxs)
+        group_types = unique(all_group_idxs)
+        vref_groups = Dict(t => InfiniteOpt.GeneralVariableRef[] for t in group_types)
+        for (vref, group_idx) in zip(vrefs, all_group_idxs)
+            push!(vref_groups[group_idx], vref)
+        end
+    end
     # now process and add each infinite variable
-    for vref in append!(ivrefs, drefs)
+    for vref in vrefs
         # retrieve basic information
         info = InfiniteOpt.core_object(vref).info # JuMP.VariableInfo
         _ensure_continuous(info)
@@ -157,6 +187,25 @@ function _add_infinite_variables(
         core, new_var = ExaModels.add_var(core, dims...; start = start, lvar = lb, uvar = ub)
         data.infvar_mappings[vref] = new_var
     end
+    # process and store a grouped variable for each group of variables with common infinite parameter groups
+    if create_variable_groups && length(data.base_itrs) > 1
+        for group_idx in group_types
+            group_vrefs = vref_groups[group_idx]
+            v1 = first(group_vrefs)
+            num_vars = v1.length * length(group_vrefs)
+            ex_var = ExaModels.Variable((v1.size..., 1:length(group_vrefs)), num_vars, v1.offset, :x, nothing)
+            for vref in group_vrefs
+                data.var_to_grouped_var[vref] = ex_var
+            end
+        end
+    elseif create_variable_groups
+        v1 = first(vrefs)
+        num_vars = v1.length * length(vrefs)
+        ex_var = ExaModels.Variable((v1.size..., 1:length(vrefs)), num_vars, v1.offset, :x, nothing)
+        for vref in vrefs
+            data.var_to_grouped_var[vref] = ex_var
+        end
+    end
     return core
 end
 
@@ -164,9 +213,24 @@ end
 function _add_parameter_functions(
     core::ExaModels.ExaCore,
     data::ExaMappingData,
-    inf_model::InfiniteOpt.InfiniteModel
+    inf_model::InfiniteOpt.InfiniteModel;
+    create_parameter_groups::Bool = false
     )  
-    for pfref in InfiniteOpt.all_parameter_functions(inf_model)
+    pfrefs = InfiniteOpt.all_parameter_functions(inf_model)
+    # sort by infinite parameter groups (required to capture repeated finite patterns)
+    if create_parameter_groups && length(data.base_itrs) > 1 
+        all_group_idxs = map(v -> InfiniteOpt.parameter_group_int_indices(v), pfrefs)
+        sorted_int_idxs = sortperm(all_group_idxs)
+        permute!(pfrefs, sorted_int_idxs)
+        permute!(all_group_idxs, sorted_int_idxs)
+        group_types = unique(all_group_idxs)
+        pfref_groups = Dict(t => InfiniteOpt.GeneralVariableRef[] for t in group_types)
+        for (pfref, group_idx) in zip(pfrefs, all_group_idxs)
+            push!(pfref_groups[group_idx], pfref)
+        end
+    end
+    # iterate and add each parameter function
+    for pfref in pfrefs
         # gather the basic information
         group_idxs = InfiniteOpt.parameter_group_int_indices(pfref)
         pfunc = InfiniteOpt.core_object(pfref)
@@ -181,6 +245,25 @@ function _add_parameter_functions(
         # Register the parameter function values in the ExaCore & mapping data
         core, new_par = ExaModels.add_par(core, vals)
         data.param_mappings[pfref] = new_par
+    end
+    # process and store a grouped variable for each group of variables with common infinite parameter groups
+    if create_parameter_groups && length(data.base_itrs) > 1
+        for group_idx in group_types
+            group_pfrefs = pfref_groups[group_idx]
+            pf1 = first(group_pfrefs)
+            num_pars = pf1.length * length(group_pfrefs)
+            ex_var = ExaModels.Parameter((pf1.size..., 1:length(group_pfrefs)), num_pars, pf1.offset, nothing)
+            for pfref in group_pfrefs
+                data.var_to_grouped_var[pfref] = ex_var
+            end
+        end
+    elseif create_parameter_groups
+        pf1 = first(pfrefs)
+        num_pars = pf1.length * length(pfrefs)
+        ex_par = ExaModels.Parameter((pf1.size..., 1:length(pfrefs)), num_pars, pf1.offset, nothing)
+        for pfref in pfrefs
+            data.var_to_grouped_var[pfref] = ex_par
+        end
     end
     return core
 end
@@ -493,7 +576,7 @@ function _add_constraints(
     inf_model::InfiniteOpt.InfiniteModel
     )
     for cref in JuMP.all_constraints(inf_model)
-        # skip if the constraint is a variable bound or type
+        # skip if the constraint is a variable bound or already added (as a grouped constraint)
         InfiniteOpt.is_variable_domain_constraint(cref) && continue
         haskey(data.constraint_mappings, cref) && continue
         # parse the basic information
@@ -564,6 +647,7 @@ function InfiniteOpt.make_reduced_expr(
 end
 
 # Add the approximation equations for each derivative variable
+# TODO: group together all the derivatives that share derivative method, order, and infinite parameters
 function _add_derivative_approximations(
     core::ExaModels.ExaCore, 
     data::ExaMappingData,
@@ -618,6 +702,7 @@ function _add_derivative_approximations(
 end
 
 # Add the constraints needed for piecewise constant control variables
+# TODO: group together all the piecewise variables that share the same infinite parameter(s)
 function _add_collocation_restrictions(
     core::ExaModels.ExaCore, 
     data::ExaMappingData,
@@ -828,22 +913,42 @@ function build_exa_core!(
     core::ExaModels.ExaCore, 
     data::ExaMappingData,
     inf_model::InfiniteOpt.InfiniteModel;
-    process_finite_indices_of_named_constraints = false
+    group_repeated_constraint_patterns = false
     )
     # initial setup
     _build_base_iterators(data, inf_model)
     # add the variables and appropriate mappings
-    core = _add_finite_parameters(core, data, inf_model)
-    core = _add_finite_variables(core, data, inf_model)
-    core = _add_infinite_variables(core, data, inf_model) # includes derivatives
-    core = _add_parameter_functions(core, data, inf_model)
-    _add_semi_infinite_variables(core, data, inf_model)
-    _add_point_variables(core, data, inf_model)
+    core = _add_finite_parameters(
+        core,
+        data,
+        inf_model,
+        create_parameter_groups = group_repeated_constraint_patterns
+    )
+    core = _add_finite_variables(
+        core,
+        data,
+        inf_model,
+        create_variable_groups = group_repeated_constraint_patterns
+    )
+    core = _add_infinite_variables( # includes derivatives
+        core,
+        data,
+        inf_model,
+        create_variable_groups = group_repeated_constraint_patterns
+    )
+    core = _add_parameter_functions(
+        core,
+        data,
+        inf_model,
+        create_parameter_groups = group_repeated_constraint_patterns
+    )
+    _add_semi_infinite_variables(core, data, inf_model) # TODO: add support for grouping semi-infinite variables
+    _add_point_variables(core, data, inf_model) # TODO: add support for grouping point variables
     # account for user-defined nonlinear operators
     _add_user_operators(inf_model)
     # add the constraints
-    if process_finite_indices_of_named_constraints
-        core = _process_array_objects(core, data, inf_model)
+    if group_repeated_constraint_patterns
+        core = _group_and_add_constraints(core, data, inf_model) # TODO: can eventually replace `_add_constraints` if it works well
     end
     core = _add_constraints(core, data, inf_model)
     core = _add_derivative_approximations(core, data, inf_model)
@@ -862,21 +967,21 @@ end
         inf_model::InfiniteOpt.InfiniteModel,
         data::ExaMappingData;
         [backend = nothing,
-        process_finite_indices_of_named_constraints = false] # experimental
+        group_repeated_constraint_patterns = false] # experimental
     )::ExaModels.ExaCore
 
 Create `ExaModels.ExaCore` from `inf_model` using the provided
 `ExaMappingData` to store the variable and constraint mappings. 
 Optionally, try to aggregate common algebraic constraint structures
 over a named constraint array (e.g., `@constraint(model, con[i=1:N], ...)`)
-by setting `process_finite_indices_of_named_constraints = true`. This is an 
+by setting `group_repeated_constraint_patterns = true`. This is an 
 experimental feature that may encounter issues and may be removed/modified in the future.
 """
 function ExaModels.ExaCore(
     inf_model::InfiniteOpt.InfiniteModel,
     data::ExaMappingData;
     backend = nothing,
-    process_finite_indices_of_named_constraints = false
+    group_repeated_constraint_patterns = false
     )
     # TODO add support for other float types once InfiniteOpt does
     minimize = JuMP.objective_sense(inf_model) == _MOI.MIN_SENSE
@@ -884,7 +989,7 @@ function ExaModels.ExaCore(
     return build_exa_core!(
         core,
         data, 
-        inf_model; process_finite_indices_of_named_constraints = process_finite_indices_of_named_constraints
+        inf_model; group_repeated_constraint_patterns = group_repeated_constraint_patterns
     )
 end
 
@@ -893,39 +998,39 @@ end
         inf_model::InfiniteOpt.InfiniteModel,
         [data::ExaMappingData];
         [backend = nothing,
-        process_finite_indices_of_named_constraints = false] # experimental
+        group_repeated_constraint_patterns = false] # experimental
     )::ExaModels.ExaModel
 
 Create an `ExaModels.ExaModel` from `inf_model` and store the mappings in
 `data`. If `data` is not provided, the mappings cannot be readily extracted.
 Optionally, try to aggregate common algebraic constraint structures
 over a named constraint array (e.g., `@constraint(model, con[i=1:N], ...)`)
-by setting `process_finite_indices_of_named_constraints = true`. This is an 
+by setting `group_repeated_constraint_patterns = true`. This is an 
 experimental feature that may encounter issues and may be removed/modified in the future.
 """
 function ExaModels.ExaModel(
     inf_model::InfiniteOpt.InfiniteModel,
     data::ExaMappingData;
     backend = nothing,
-    process_finite_indices_of_named_constraints = false
+    group_repeated_constraint_patterns = false
     )
     core = ExaModels.ExaCore(
         inf_model,
         data; 
         backend = backend, 
-        process_finite_indices_of_named_constraints = process_finite_indices_of_named_constraints
+        group_repeated_constraint_patterns = group_repeated_constraint_patterns
     )
     return ExaModels.ExaModel(core)
 end
 function ExaModels.ExaModel(
     inf_model::InfiniteOpt.InfiniteModel;
     backend = nothing,
-    process_finite_indices_of_named_constraints = false
+    group_repeated_constraint_patterns = false
 )
     return ExaModels.ExaModel(
         inf_model,
         ExaMappingData();
         backend = backend,
-        process_finite_indices_of_named_constraints = process_finite_indices_of_named_constraints
+        group_repeated_constraint_patterns = group_repeated_constraint_patterns
     )
 end

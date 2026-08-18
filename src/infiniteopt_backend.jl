@@ -32,7 +32,7 @@ struct ExaMappingData
         }
     }
     # Finite template constraint metadata
-    indexed_var_to_exa_var::Dict{InfiniteOpt.GeneralVariableRef, Union{ExaModels.Variable, ExaModels.Parameter}}
+    var_to_grouped_var::Dict{InfiniteOpt.GeneralVariableRef, Union{ExaModels.Variable, ExaModels.Parameter}}
     
     # Default constructor
     function ExaMappingData()

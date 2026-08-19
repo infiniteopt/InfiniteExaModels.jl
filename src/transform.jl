@@ -667,7 +667,8 @@ end
 function _add_derivative_approximations(
     core::ExaModels.ExaCore, 
     data::ExaMappingData,
-    inf_model::InfiniteOpt.InfiniteModel
+    inf_model::InfiniteOpt.InfiniteModel;
+    group_constraints::Bool = false
     )
     for dref in InfiniteOpt.all_derivatives(inf_model)
         # gather the derivative information
@@ -755,19 +756,16 @@ function _add_collocation_restrictions(
             aliases = (data.group_alias[g] for g in group_idxs)
             itrs = (g == pref_group ? pref_itr : data.base_itrs[g] for g in group_idxs)
             if group_constraints
-                finite_itr = [(; :group_var => _get_grouped_idx(vref, data)) for vref in vrefs]
+                finite_itr = [(; :grouped_var => _get_grouped_idx(vref, data)) for vref in vrefs]
                 itr = vec([merge(i...) for i in Iterators.product(itrs..., finite_itr)])
             else
                 itr = vec([merge(i...) for i in Iterators.product(itrs...)])
             end
             # prepare the variable indices
             data_src = ExaModels.DataSource()
-            idx_pars1 = (a == pref_alias ? data_src[:i1] : data_src[a] for a in aliases)
-            idx_pars2 = (a == pref_alias ? data_src[:i2] : data_src[a] for a in aliases)
-            if group_constraints
-                idx_pars1 = (idx_pars1..., data_src[:grouped_var])
-                idx_pars2 = (idx_pars2..., data_src[:grouped_var])
-            end
+            alias_tuple = group_constraints ? (aliases..., :grouped_var) : Tuple(aliases)
+            idx_pars1 = (a == pref_alias ? data_src[:i1] : data_src[a] for a in alias_tuple)
+            idx_pars2 = (a == pref_alias ? data_src[:i2] : data_src[a] for a in alias_tuple)
             # create the ExaModel expression tree and add the constraint
             if group_constraints
                 grouped_var = data.var_to_grouped_var[vrefs[1]]

@@ -295,6 +295,9 @@ function _process_semi_infinite_var(vref, data)
     else
         mapped_var = data.infvar_mappings[ivref]
     end
+    if haskey(data.var_to_grouped_var, ivref)
+        data.var_to_grouped_var[vref] = mapped_var
+    end
     return data.semivar_info[vref] = (mapped_var, indexing)
 end
 
@@ -352,7 +355,13 @@ function _process_point_var(vref, data)
     end
     group_idxs = InfiniteOpt.parameter_group_int_indices(ivref)
     idxs = Tuple(data.support_to_index[i, s] for (i, s) in zip(group_idxs, supp))
-    return data.infvar_mappings[ivref][idxs...]
+    mapped_var = data.infvar_mappings[ivref]
+    pt = mapped_var[idxs...]
+    if haskey(data.var_to_grouped_var, ivref)
+        data.var_to_grouped_var[vref] = mapped_var
+    end
+    data.point_indicies[vref] = idxs
+    return data.finvar_mappings[vref] = pt
 end
 
 # Add all the point variables from an InfiniteModel to a ExaCore
@@ -364,7 +373,6 @@ function _add_point_variables(
     for vref in JuMP.all_variables(inf_model, InfiniteOpt.PointVariable)
         # store the index mapping for the point variable
         pt = _process_point_var(vref, data)
-        data.finvar_mappings[vref] = pt
         # update the bounds and start value if needed
         info = InfiniteOpt.core_object(vref).info # InfiniteOpt.RestrictedDomainInfo
         _update_bounds_and_start(core, info, pt)
@@ -402,6 +410,16 @@ function _index_params(
 end
 function _index_params(
     vref::InfiniteOpt.GeneralVariableRef,
+    ::Type{InfiniteOpt.PointVariableIndex},
+    data::ExaMappingData
+    )
+    if !haskey(data.finvar_mappings, vref)
+        _process_point_var(vref, data)
+    end
+    return data.point_indicies[vref]
+end
+function _index_params(
+    vref::InfiniteOpt.GeneralVariableRef,
     type,
     data::ExaMappingData
     )
@@ -436,9 +454,7 @@ function _map_variable(vref, ::Type{InfiniteOpt.PointVariableIndex}, data)
     if haskey(data.finvar_mappings, vref) 
         return data.finvar_mappings[vref]
     else
-        var = _process_point_var(vref, data)
-        data.finvar_mappings[vref] = var
-        return var
+        return _process_point_var(vref, data)
     end
 end
 function _map_variable(

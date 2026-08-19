@@ -31,6 +31,8 @@ struct ExaMappingData
             Vector{Any}
         }
     }
+    # Point variable info
+    point_indicies::Dict{InfiniteOpt.GeneralVariableRef, Tuple}
     # Finite template constraint metadata
     var_to_grouped_var::Dict{InfiniteOpt.GeneralVariableRef, Union{ExaModels.Variable, ExaModels.Parameter}}
     
@@ -54,6 +56,7 @@ struct ExaMappingData
                     Vector{Any}
                 }
             }(),
+            Dict{InfiniteOpt.GeneralVariableRef, Tuple}(),
             Dict{InfiniteOpt.GeneralVariableRef, Union{ExaModels.Variable, ExaModels.Parameter}}(),
         )
     end

@@ -4,12 +4,12 @@ const _VariableTypeHashingInt = Dict(
     InfiniteOpt.ParameterFunctionIndex => -3,
     InfiniteOpt.InfiniteVariableIndex => -4,
     InfiniteOpt.DerivativeIndex => -4,
+    InfiniteOpt.SemiInfiniteVariableIndex => -4,
+    InfiniteOpt.PointVariableIndex => -4,
     InfiniteOpt.FiniteVariableIndex => -5,
-    InfiniteOpt.SemiInfiniteVariableIndex => -6,
-    InfiniteOpt.PointVariableIndex => -7,
-    InfiniteOpt.IndependentParameterIndex => -8,
-    InfiniteOpt.DependentParameterIndex => -9,
-    InfiniteOpt.MeasureIndex => -10,
+    InfiniteOpt.IndependentParameterIndex => -6,
+    InfiniteOpt.DependentParameterIndex => -7,
+    InfiniteOpt.MeasureIndex => -8,
 )
 
 ## Extract the following from an expression:
@@ -78,16 +78,31 @@ function _group_info_msg(group, msg)
     return
 end
 
+# TODO: Make work for parameters, semi-infinite variables, and point variables
 # Get the grouped index of a variable based on its direct exaified variable reference
-function _get_grouped_idx(em_var::ExaModels.Var, grouped_var::ExaModels.Variable)
+function _get_grouped_idx(
+    em_var::Union{ExaModels.Var, ExaModels.Par}, 
+    grouped_var::Union{ExaModels.Variable, ExaModels.Parameter}
+    )
     idx = em_var.i - grouped_var.offset
-    @assert idx in grouped_var.size[end]
+    @assert idx in grouped_var.size[end] && length(grouped_var.size) == 1
     return idx
 end
-function _get_grouped_idx(em_var::ExaModels.Variable, grouped_var::ExaModels.Variable)
+function _get_grouped_idx(
+    em_var::Union{ExaModels.Variable, ExaModels.Parameter},
+    grouped_var::Union{ExaModels.Variable, ExaModels.Parameter}
+    )
     idx = (em_var.offset - grouped_var.offset) ÷ em_var.length + 1
     @assert idx in grouped_var.size[end]
     return idx
+end
+function _get_grouped_idx(vref::InfiniteOpt.GeneralVariableRef, data::ExaMappingData)
+    if vref.index_type in (InfiniteOpt.SemiInfiniteVariableIndex, InfiniteOpt.PointVariableIndex)
+        vref = InfiniteOpt.infinite_variable_ref(vref)
+    end
+    em_var = data[vref]
+    grouped_var = data.var_to_grouped_var[vref]
+    return _get_grouped_idx(em_var, grouped_var)
 end
 
 # Given a candidate group of constraint, seek to merge together and add as a single constraint pattern to `core`
@@ -101,15 +116,15 @@ function _process_candidate_constraint_group(
     )
     # determine which vrefs and consts change across the array
     vrefs1 = vref_lists[1]
-    grouped_var_idxs = [any(l -> l[i] != vrefs1[i], vref_lists) for i in eachindex(vrefs1)]
+    is_grouped_var = [any(l -> l[i] != vrefs1[i], vref_lists) for i in eachindex(vrefs1)]
     consts1 = const_lists[1]
-    grouped_data_idxs = [any(l -> l[i] != consts1[i], const_lists) for i in eachindex(consts1)]
+    is_grouped_data = [any(l -> l[i] != consts1[i], const_lists) for i in eachindex(consts1)]
     # exafy the vrefs
     exafied_vrefs = Vector{Any}(undef, length(vrefs1))
     var_itr = Any[(;) for _ in 1:length(crefs)]
     group_var_idx = 1
     for (i, vref) in enumerate(vrefs1)
-        if grouped_var_idxs[i]
+        if is_grouped_var[i]
             if !haskey(data.var_to_grouped_var, vref) 
                 _group_info_msg(crefs, "Failure: $(vref) is not a grouped variable/parameter which prevents adding")
                 return false, core
@@ -125,8 +140,7 @@ function _process_candidate_constraint_group(
                     _group_info_msg(crefs, "Failure: Unable to correctly set up variable grouping for $(infvar) which prevents adding")
                     return false, core
                 end
-                em_var = data[infvar]
-                var_itr[j] = (; var_itr[j]..., itr_alias => _get_grouped_idx(em_var, src_var))
+                var_itr[j] = (; var_itr[j]..., itr_alias => _get_grouped_idx(infvar, data))
             end
             group_var_idx += 1
         else
@@ -138,7 +152,7 @@ function _process_candidate_constraint_group(
     const_itr = Any[(;) for _ in 1:length(crefs)]
     grouped_const_idx = 1
     for (i, c) in enumerate(consts1)
-        if grouped_data_idxs[i]
+        if is_grouped_data[i]
             itr_alias = Symbol("grouped_const$grouped_const_idx")
             exafied_consts[i] = ExaModels.DataSource()[itr_alias]
             for j in 1:length(crefs)

@@ -78,12 +78,8 @@ function _group_info_msg(group, msg)
     return
 end
 
-# TODO: Make work for parameters, semi-infinite variables, and point variables
 # Get the grouped index of a variable based on its direct exaified variable reference
-function _get_grouped_idx(
-    em_var::Union{ExaModels.Var, ExaModels.Par}, 
-    grouped_var::Union{ExaModels.Variable, ExaModels.Parameter}
-    )
+function _get_grouped_idx(em_var::ExaModels.Var, grouped_var::ExaModels.Variable)
     idx = em_var.i - grouped_var.offset
     @assert idx in grouped_var.size[end] && length(grouped_var.size) == 1
     return idx

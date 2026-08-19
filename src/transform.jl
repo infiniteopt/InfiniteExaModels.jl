@@ -682,7 +682,7 @@ function _add_derivative_approximations(
     )
     # group all the derivatives of the same order, method, and infinite parameter dependencies
     signature_to_derivs = Dict{
-        Tuple{InfiniteOpt.GeneralVariableRef, Int, Vector{Int}}, 
+        Tuple{InfiniteOpt.GeneralVariableRef, Int, Vector{Int}, DataType}, 
         Vector{InfiniteOpt.GeneralVariableRef}
     }()
     for dref in InfiniteOpt.all_derivatives(inf_model)
@@ -690,13 +690,13 @@ function _add_derivative_approximations(
         pref = InfiniteOpt.operator_parameter(dref)
         order = InfiniteOpt.derivative_order(dref)
         group_idxs = InfiniteOpt.parameter_group_int_indices(vref)
-        if !haskey(signature_to_derivs, (pref, order, group_idxs))
-            signature_to_derivs[pref, order, group_idxs] = InfiniteOpt.GeneralVariableRef[]
+        if !haskey(signature_to_derivs, (pref, order, group_idxs, vref.index_type))
+            signature_to_derivs[pref, order, group_idxs, vref.index_type] = InfiniteOpt.GeneralVariableRef[]
         end
-        push!(signature_to_derivs[pref, order, group_idxs], dref)
+        push!(signature_to_derivs[pref, order, group_idxs, vref.index_type], dref)
     end
     # iterate over each group of derivatives and add the approximation equations
-    for ((pref, order, group_idxs), drefs) in signature_to_derivs
+    for ((pref, order, group_idxs, _), drefs) in signature_to_derivs
         # gather basic info
         method = InfiniteOpt.derivative_method(drefs[1])
         pref_group = InfiniteOpt.parameter_group_int_index(pref)
@@ -724,7 +724,7 @@ function _add_derivative_approximations(
         if group_constraints
             em_expr = InfiniteOpt.make_indexed_derivative_expr(
                 drefs[1], 
-                vref,
+                InfiniteOpt.derivative_argument(drefs[1]),
                 pref,
                 order,
                 data_src[data.group_alias[pref_group]],
@@ -737,7 +737,7 @@ function _add_derivative_approximations(
             for dref in drefs
                 em_expr = InfiniteOpt.make_indexed_derivative_expr(
                     dref, 
-                    vref, 
+                    InfiniteOpt.derivative_argument(dref),
                     pref, 
                     order, 
                     data_src[data.group_alias[pref_group]], 

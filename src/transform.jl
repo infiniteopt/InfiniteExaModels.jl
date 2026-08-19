@@ -722,7 +722,8 @@ end
 function _add_collocation_restrictions(
     core::ExaModels.ExaCore, 
     data::ExaMappingData,
-    inf_model::InfiniteOpt.InfiniteModel
+    inf_model::InfiniteOpt.InfiniteModel;
+    group_constraints::Bool = false
     )
     for (pidx, vidxs) in inf_model.piecewise_vars
         # gather the basic information
@@ -739,19 +740,48 @@ function _add_collocation_restrictions(
         ubs = repeat(2+num_nodes:num_nodes+1:num_supps, inner = num_nodes)
         pts = filter(i -> !(i in ubs), 2:num_supps-1)
         pref_itr = [(i1 = ub, i2 = pt) for (ub, pt) in zip(ubs, pts)]
-        # make the constraints for each infinite variable
+        # group the variables by their input infinite parameters
+        group_idxs_to_vrefs = Dict{Vector{Int}, Vector{InfiniteOpt.GeneralVariableRef}}()
         for vidx in vidxs
             vref = InfiniteOpt.GeneralVariableRef(inf_model, vidx)
             group_idxs = InfiniteOpt.parameter_group_int_indices(vref)
+            if !haskey(group_idxs_to_vrefs, group_idxs)
+                group_idxs_to_vrefs[group_idxs] = InfiniteOpt.GeneralVariableRef[]
+            end
+            push!(group_idxs_to_vrefs[group_idxs], vref)
+        end
+        # add the constraints for each group of variables
+        for (group_idxs, vrefs) in group_idxs_to_vrefs
+            # prepare the iterator
             aliases = (data.group_alias[g] for g in group_idxs)
             itrs = (g == pref_group ? pref_itr : data.base_itrs[g] for g in group_idxs)
-            itr = vec([merge(i...) for i in Iterators.product(itrs...)])
+            if group_constraints
+                finite_itr = [(; :group_var => _get_grouped_idx(vref, data)) for vref in vrefs]
+                itr = vec([merge(i...) for i in Iterators.product(itrs..., finite_itr)])
+            else
+                itr = vec([merge(i...) for i in Iterators.product(itrs...)])
+            end
+            # prepare the variable indices
             data_src = ExaModels.DataSource()
             idx_pars1 = (a == pref_alias ? data_src[:i1] : data_src[a] for a in aliases)
             idx_pars2 = (a == pref_alias ? data_src[:i2] : data_src[a] for a in aliases)
-            ivar = data.infvar_mappings[vref]
-            em_expr = ivar[idx_pars1...] - ivar[idx_pars2...]
-            core, _ = ExaModels.add_con(core, em_expr, itr)
+            if group_constraints
+                idx_pars1 = (idx_pars1..., data_src[:grouped_var])
+                idx_pars2 = (idx_pars2..., data_src[:grouped_var])
+            end
+            # create the ExaModel expression tree and add the constraint
+            if group_constraints
+                grouped_var = data.var_to_grouped_var[vrefs[1]]
+                em_expr = grouped_var[idx_pars1...] - grouped_var[idx_pars2...]
+                core, _ = ExaModels.add_con(core, em_expr, itr)
+            else
+                for vref in vrefs
+                    ivar = data.infvar_mappings[vref]
+                    em_expr = ivar[idx_pars1...] - ivar[idx_pars2...]
+                    core, _ = ExaModels.add_con(core, em_expr, itr)
+                end
+            end
+
         end
     end
     return core

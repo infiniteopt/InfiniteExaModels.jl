@@ -718,7 +718,6 @@ function _add_derivative_approximations(
 end
 
 # Add the constraints needed for piecewise constant control variables
-# TODO: group together all the piecewise variables that share the same infinite parameter(s)
 function _add_collocation_restrictions(
     core::ExaModels.ExaCore, 
     data::ExaMappingData,
@@ -988,8 +987,8 @@ function build_exa_core!(
         inf_model,
         create_parameter_groups = group_repeated_constraint_patterns
     )
-    _add_semi_infinite_variables(core, data, inf_model) # TODO: add support for grouping semi-infinite variables
-    _add_point_variables(core, data, inf_model) # TODO: add support for grouping point variables
+    _add_semi_infinite_variables(core, data, inf_model)
+    _add_point_variables(core, data, inf_model)
     # account for user-defined nonlinear operators
     _add_user_operators(inf_model)
     # add the constraints
@@ -998,7 +997,12 @@ function build_exa_core!(
     end
     core = _add_constraints(core, data, inf_model)
     core = _add_derivative_approximations(core, data, inf_model)
-    core = _add_collocation_restrictions(core, data, inf_model)
+    core = _add_collocation_restrictions(
+        core,
+        data,
+        inf_model,
+        group_constraints = group_repeated_constraint_patterns
+    )
     # add the objective if there is one
     expr = JuMP.objective_function(inf_model)
     sense = JuMP.objective_sense(inf_model)

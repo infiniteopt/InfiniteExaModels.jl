@@ -710,7 +710,7 @@ function _add_derivative_approximations(
         end
         # collect the expression data
         supps = map(p -> p[p_alias], srt_itr)
-        idxs, arg_itrs... = InfiniteOpt.derivative_expr_data(dref, order, supps, method)
+        idxs, arg_itrs... = InfiniteOpt.derivative_expr_data(drefs[1], order, supps, method)
         # make the iterator
         aliases = Tuple(Symbol("d_arg$i") for i in eachindex(arg_itrs))
         pref_itr = [(; srt_itr[i]..., zip(aliases, args)...) for (i, args...) in zip(idxs, arg_itrs...)]
@@ -724,12 +724,12 @@ function _add_derivative_approximations(
         if group_constraints
             em_expr = InfiniteOpt.make_indexed_derivative_expr(
                 drefs[1], 
-                vref, 
-                pref, 
-                order, 
-                data_src[data.group_alias[pref_group]], 
-                supps, 
-                _DerivReductionBackendInfo(data, true),
+                vref,
+                pref,
+                order,
+                data_src[data.group_alias[pref_group]],
+                supps,
+                _DerivReductionBackendInfo(data, group_constraints),
                 method,
                 (data_src[a] for a in aliases)...
             )
@@ -742,7 +742,7 @@ function _add_derivative_approximations(
                     order, 
                     data_src[data.group_alias[pref_group]], 
                     supps, 
-                    _DerivReductionBackendInfo(data, false),
+                    _DerivReductionBackendInfo(data, group_constraints),
                     method,
                     (data_src[a] for a in aliases)...
                 )

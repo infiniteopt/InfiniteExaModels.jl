@@ -620,6 +620,7 @@ end
 # Make dispatch type to pass the data needed by `make_reduced_expr`
 struct _DerivReductionBackendInfo <: InfiniteOpt.AbstractTransformationBackend
     data::ExaMappingData
+    grouped_constraints::Bool
 end
 
 # Extend make_reduced_expr to create an ExaModel expression
@@ -646,7 +647,12 @@ function InfiniteOpt.make_reduced_expr(
                 data_src[i] 
             end
             end for i in inds)
-        return ivar[idx_pars...]
+        if dispatch_data.grouped_constraints
+            grouped_var = data.var_to_grouped_var[vref]
+            return grouped_var[idx_pars..., data_src[:grouped_var]]
+        else
+            return ivar[idx_pars...]
+        end
     else # either an infinite variable or a derivative variable
         group_idxs = InfiniteOpt.parameter_group_int_indices(vref)
         idx_pars = (begin 
@@ -657,27 +663,42 @@ function InfiniteOpt.make_reduced_expr(
                 data_src[g_alias]
             end 
             end for i in group_idxs)
-        return data.infvar_mappings[vref][idx_pars...]
+        if dispatch_data.grouped_constraints
+            grouped_var = data.var_to_grouped_var[vref]
+            return grouped_var[idx_pars..., data_src[:grouped_var]]
+        else
+            return data.infvar_mappings[vref][idx_pars...]
+        end
     end
     return
 end
 
 # Add the approximation equations for each derivative variable
-# TODO: group together all the derivatives that share derivative method, order, and infinite parameters
 function _add_derivative_approximations(
     core::ExaModels.ExaCore, 
     data::ExaMappingData,
     inf_model::InfiniteOpt.InfiniteModel;
     group_constraints::Bool = false
     )
+    # group all the derivatives of the same order, method, and infinite parameter dependencies
+    signature_to_derivs = Dict{
+        Tuple{InfiniteOpt.GeneralVariableRef, Int, Vector{Int}}, 
+        Vector{InfiniteOpt.GeneralVariableRef}
+    }()
     for dref in InfiniteOpt.all_derivatives(inf_model)
-        # gather the derivative information
         vref = InfiniteOpt.derivative_argument(dref) 
         pref = InfiniteOpt.operator_parameter(dref)
         order = InfiniteOpt.derivative_order(dref)
-        method = InfiniteOpt.derivative_method(dref)
-        # gather the needed infinite parameter data
         group_idxs = InfiniteOpt.parameter_group_int_indices(vref)
+        if !haskey(signature_to_derivs, (pref, order, group_idxs))
+            signature_to_derivs[pref, order, group_idxs] = InfiniteOpt.GeneralVariableRef[]
+        end
+        push!(signature_to_derivs[pref, order, group_idxs], dref)
+    end
+    # iterate over each group of derivatives and add the approximation equations
+    for ((pref, order, group_idxs), drefs) in signature_to_derivs
+        # gather basic info
+        method = InfiniteOpt.derivative_method(drefs[1])
         pref_group = InfiniteOpt.parameter_group_int_index(pref)
         # sort the base support iterator 
         p_alias = data.param_alias[pref]
@@ -693,27 +714,42 @@ function _add_derivative_approximations(
         # make the iterator
         aliases = Tuple(Symbol("d_arg$i") for i in eachindex(arg_itrs))
         pref_itr = [(; srt_itr[i]..., zip(aliases, args)...) for (i, args...) in zip(idxs, arg_itrs...)]
-        if length(group_idxs) > 1
-            itrs = [g == pref_group ? pref_itr : data.base_itrs[g] for g in group_idxs]
-            itr = [merge(i...) for i in Iterators.product(itrs...)]
-        else
-            itr = pref_itr
+        itrs = [g == pref_group ? pref_itr : data.base_itrs[g] for g in group_idxs]
+        if group_constraints
+            push!(itrs, [(; :grouped_var => _get_grouped_idx(dref, data)) for dref in drefs])
         end
-        # make the ExaModel expression tree
+        itr = length(itrs) > 1 ? vec([merge(i...) for i in Iterators.product(itrs...)]) : pref_itr
+        # make the ExaModel expression tree and add the constraint(s)
         data_src = ExaModels.DataSource()
-        em_expr = InfiniteOpt.make_indexed_derivative_expr(
-            dref, 
-            vref, 
-            pref, 
-            order, 
-            data_src[data.group_alias[pref_group]], 
-            supps, 
-            _DerivReductionBackendInfo(data),
-            method,
-            (data_src[a] for a in aliases)...
+        if grouped_constraints
+            # TODO: make this handle the grouped indexing
+            em_expr = InfiniteOpt.make_indexed_derivative_expr(
+                drefs[1], 
+                vref, 
+                pref, 
+                order, 
+                data_src[data.group_alias[pref_group]], 
+                supps, 
+                _DerivReductionBackendInfo(data, true),
+                method,
+                (data_src[a] for a in aliases)...
             )
-        # add the constraint
-        core, _ = ExaModels.add_con(core, em_expr, itr)
+        else
+            for dref in drefs
+                em_expr = InfiniteOpt.make_indexed_derivative_expr(
+                    dref, 
+                    vref, 
+                    pref, 
+                    order, 
+                    data_src[data.group_alias[pref_group]], 
+                    supps, 
+                    _DerivReductionBackendInfo(data, false),
+                    method,
+                    (data_src[a] for a in aliases)...
+                )
+                core, _ = ExaModels.add_con(core, em_expr, itr)
+            end
+        end
     end
     return core
 end
@@ -994,7 +1030,12 @@ function build_exa_core!(
         core = _group_and_add_constraints(core, data, inf_model) # TODO: can eventually replace `_add_constraints` if it works well
     end
     core = _add_constraints(core, data, inf_model)
-    core = _add_derivative_approximations(core, data, inf_model)
+    core = _add_derivative_approximations(
+        core,
+        data,
+        inf_model,
+        group_constraints = group_repeated_constraint_patterns
+    )
     core = _add_collocation_restrictions(
         core,
         data,

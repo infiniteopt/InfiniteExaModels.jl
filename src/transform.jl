@@ -620,7 +620,7 @@ end
 # Make dispatch type to pass the data needed by `make_reduced_expr`
 struct _DerivReductionBackendInfo <: InfiniteOpt.AbstractTransformationBackend
     data::ExaMappingData
-    grouped_constraints::Bool
+    group_constraints::Bool
 end
 
 # Extend make_reduced_expr to create an ExaModel expression
@@ -647,7 +647,7 @@ function InfiniteOpt.make_reduced_expr(
                 data_src[i] 
             end
             end for i in inds)
-        if dispatch_data.grouped_constraints
+        if dispatch_data.group_constraints
             grouped_var = data.var_to_grouped_var[vref]
             return grouped_var[idx_pars..., data_src[:grouped_var]]
         else
@@ -663,7 +663,7 @@ function InfiniteOpt.make_reduced_expr(
                 data_src[g_alias]
             end 
             end for i in group_idxs)
-        if dispatch_data.grouped_constraints
+        if dispatch_data.group_constraints
             grouped_var = data.var_to_grouped_var[vref]
             return grouped_var[idx_pars..., data_src[:grouped_var]]
         else
@@ -721,8 +721,7 @@ function _add_derivative_approximations(
         itr = length(itrs) > 1 ? vec([merge(i...) for i in Iterators.product(itrs...)]) : pref_itr
         # make the ExaModel expression tree and add the constraint(s)
         data_src = ExaModels.DataSource()
-        if grouped_constraints
-            # TODO: make this handle the grouped indexing
+        if group_constraints
             em_expr = InfiniteOpt.make_indexed_derivative_expr(
                 drefs[1], 
                 vref, 

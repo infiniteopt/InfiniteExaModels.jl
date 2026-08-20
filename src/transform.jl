@@ -733,6 +733,7 @@ function _add_derivative_approximations(
                 method,
                 (data_src[a] for a in aliases)...
             )
+            core, _ = ExaModels.add_con(core, em_expr, itr)
         else
             for dref in drefs
                 em_expr = InfiniteOpt.make_indexed_derivative_expr(

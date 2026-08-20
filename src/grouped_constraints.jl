@@ -81,7 +81,7 @@ end
 # Get the grouped index of a variable based on its direct exaified variable reference
 function _get_grouped_idx(em_var::ExaModels.Var, grouped_var::ExaModels.Variable)
     idx = em_var.i - grouped_var.offset
-    @assert idx in grouped_var.size[end] && length(grouped_var.size) == 1
+    @assert 1 <= idx <= grouped_var.size[end] && length(grouped_var.size) == 1
     return idx
 end
 function _get_grouped_idx(
@@ -89,7 +89,7 @@ function _get_grouped_idx(
     grouped_var::Union{ExaModels.Variable, ExaModels.Parameter}
     )
     idx = (em_var.offset - grouped_var.offset) ÷ em_var.length + 1
-    @assert idx in grouped_var.size[end]
+    @assert 1 <= idx <= grouped_var.size[end]
     return idx
 end
 function _get_grouped_idx(vref::InfiniteOpt.GeneralVariableRef, data::ExaMappingData)
@@ -217,7 +217,7 @@ function _group_and_add_constraints(
         if length(crefs) < 2
             continue
         end
-        success = _process_candidate_constraint_group(core, data, crefs, hash_to_patterns[h]...)
+        success, core = _process_candidate_constraint_group(core, data, crefs, hash_to_patterns[h]...)
         if success
             _group_info_msg(crefs, "Successfully added")
         end

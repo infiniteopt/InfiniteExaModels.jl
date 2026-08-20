@@ -111,8 +111,8 @@ function _add_finite_variables(
     create_variable_groups::Bool = false
     )
     vrefs = JuMP.all_variables(inf_model, InfiniteOpt.FiniteVariable)
-    if create_variable_groups
-        ex_var = ExaModels.Variable((1:length(vrefs),), length(vrefs), core.nvar, :x, nothing)
+    if create_variable_groups && length(vrefs) > 1
+        ex_var = ExaModels.Variable((length(vrefs),), length(vrefs), core.nvar, :x, nothing)
     end
     for vref in vrefs
         info = InfiniteOpt.core_object(vref).info # JuMP.VariableInfo
@@ -135,8 +135,8 @@ function _add_finite_parameters(
     create_parameter_groups::Bool = false
     )
     prefs = JuMP.all_variables(inf_model, InfiniteOpt.FiniteParameter)
-    if create_parameter_groups
-        ex_par = ExaModels.Parameter((1:length(prefs),), length(prefs), core.npar, nothing)
+    if create_parameter_groups && length(prefs) > 1
+        ex_par = ExaModels.Parameter((length(prefs),), length(prefs), core.npar, nothing)
     end
     for pref in prefs
         param_val = InfiniteOpt.parameter_value(pref)
@@ -191,17 +191,17 @@ function _add_infinite_variables(
     if create_variable_groups && length(data.base_itrs) > 1
         for group_idx in group_types
             group_vrefs = vref_groups[group_idx]
-            v1 = first(group_vrefs)
+            v1 = data[first(group_vrefs)]
             num_vars = v1.length * length(group_vrefs)
-            ex_var = ExaModels.Variable((v1.size..., 1:length(group_vrefs)), num_vars, v1.offset, :x, nothing)
+            ex_var = ExaModels.Variable((v1.size..., length(group_vrefs)), num_vars, v1.offset, :x, nothing)
             for vref in group_vrefs
                 data.var_to_grouped_var[vref] = ex_var
             end
         end
     elseif create_variable_groups
-        v1 = first(vrefs)
+        v1 = data[first(vrefs)]
         num_vars = v1.length * length(vrefs)
-        ex_var = ExaModels.Variable((v1.size..., 1:length(vrefs)), num_vars, v1.offset, :x, nothing)
+        ex_var = ExaModels.Variable((v1.size..., length(vrefs)), num_vars, v1.offset, :x, nothing)
         for vref in vrefs
             data.var_to_grouped_var[vref] = ex_var
         end
@@ -217,6 +217,7 @@ function _add_parameter_functions(
     create_parameter_groups::Bool = false
     )  
     pfrefs = InfiniteOpt.all_parameter_functions(inf_model)
+    length(pfrefs) == 0 && return core
     # sort by infinite parameter groups (required to capture repeated finite patterns)
     if create_parameter_groups && length(data.base_itrs) > 1 
         all_group_idxs = map(v -> InfiniteOpt.parameter_group_int_indices(v), pfrefs)
@@ -250,17 +251,17 @@ function _add_parameter_functions(
     if create_parameter_groups && length(data.base_itrs) > 1
         for group_idx in group_types
             group_pfrefs = pfref_groups[group_idx]
-            pf1 = first(group_pfrefs)
+            pf1 = data[first(group_pfrefs)]
             num_pars = pf1.length * length(group_pfrefs)
-            ex_var = ExaModels.Parameter((pf1.size..., 1:length(group_pfrefs)), num_pars, pf1.offset, nothing)
+            ex_var = ExaModels.Parameter((pf1.size..., length(group_pfrefs)), num_pars, pf1.offset, nothing)
             for pfref in group_pfrefs
                 data.var_to_grouped_var[pfref] = ex_var
             end
         end
     elseif create_parameter_groups
-        pf1 = first(pfrefs)
+        pf1 = data[first(pfrefs)]
         num_pars = pf1.length * length(pfrefs)
-        ex_par = ExaModels.Parameter((pf1.size..., 1:length(pfrefs)), num_pars, pf1.offset, nothing)
+        ex_par = ExaModels.Parameter((pf1.size..., length(pfrefs)), num_pars, pf1.offset, nothing)
         for pfref in pfrefs
             data.var_to_grouped_var[pfref] = ex_par
         end
@@ -355,10 +356,9 @@ function _process_point_var(vref, data)
     end
     group_idxs = InfiniteOpt.parameter_group_int_indices(ivref)
     idxs = Tuple(data.support_to_index[i, s] for (i, s) in zip(group_idxs, supp))
-    mapped_var = data.infvar_mappings[ivref]
-    pt = mapped_var[idxs...]
+    pt = data.infvar_mappings[ivref][idxs...]
     if haskey(data.var_to_grouped_var, ivref)
-        data.var_to_grouped_var[vref] = mapped_var
+        data.var_to_grouped_var[vref] = data.var_to_grouped_var[ivref]
     end
     data.point_indicies[vref] = idxs
     return data.finvar_mappings[vref] = pt
@@ -714,7 +714,7 @@ function _add_derivative_approximations(
         # make the iterator
         aliases = Tuple(Symbol("d_arg$i") for i in eachindex(arg_itrs))
         pref_itr = [(; srt_itr[i]..., zip(aliases, args)...) for (i, args...) in zip(idxs, arg_itrs...)]
-        itrs = [g == pref_group ? pref_itr : data.base_itrs[g] for g in group_idxs]
+        itrs = Any[g == pref_group ? pref_itr : data.base_itrs[g] for g in group_idxs]
         if group_constraints
             push!(itrs, [(; :grouped_var => _get_grouped_idx(dref, data)) for dref in drefs])
         end

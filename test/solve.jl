@@ -16,7 +16,7 @@ tol = 1E-6
     yval = value(y)
     zval = value(z)
     dyval = value(∂(y, t))
-    # test with ExaTranscriptionBackend
+    # test with ExaTranscriptionBackend 
     @test set_transformation_backend(m, ExaTranscriptionBackend(IpoptSolver)) isa Nothing
     @test set_silent(m) isa Nothing
     @test optimize!(m).status == :first_order 
@@ -90,6 +90,31 @@ end
         @test all(isapprox.(yval, value(y), atol = tol))
         @test isapprox.(zval, value(z), atol = tol)
     end
+end
+
+@testset "Dynamic Repeated Constraint Patterns" begin
+    m = InfiniteModel(Ipopt.Optimizer)
+    @infinite_parameter(m, t in [0, 1], num_supports = 11, derivative_method = OrthogonalCollocation(3))
+    @variable(m, x[1:3], Infinite(t))
+    @variable(m, u, Infinite(t))
+    @objective(m, Min, ∫(sum((x[i] - 1)^2 for i in 1:3), t))
+    @constraint(m, c1[i in 1:3], ∂(x[i], t) == u^(i+2))
+    @constraint(m, c2[i in 1:3], x[i] <= i)
+    @constraint(m, c3[i in 1:3], x[i](0) == 0.1*i)
+    constant_over_collocation(u, t)
+    set_silent(m)
+    optimize!(m)
+    obj = objective_value(m)
+    xval = value.(x)
+    uval = value(u)
+    @test set_transformation_backend(m, ExaTranscriptionBackend(IpoptSolver)) isa Nothing
+    @test set_silent(m) isa Nothing
+    @test optimize!(m, group_repeated_constraint_patterns = true).status == :first_order
+    @test isapprox(obj, objective_value(m), atol = tol)
+    for i in 1:3
+        @test all(isapprox.(xval[i], value(x[i]), atol = tol))
+    end
+    @test all(isapprox.(uval, value(u), atol = tol))
 end
 
 @testset "User-Defined Operators" begin

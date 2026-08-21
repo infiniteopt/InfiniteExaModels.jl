@@ -155,7 +155,7 @@ function _process_candidate_constraint_group(
                     return false, core
                 end
                 var_itr[j] = (; var_itr[j]..., itr_alias => _get_grouped_idx(infvar, data))
-                if !isempty(alias_map)
+                if !isempty(alias_map) # add in restricted variables indices if they exist
                     ridxs = _index_params(infvar, data)
                     var_itr[j] = merge(var_itr[j], NamedTuple(alias => ridxs[k] for (k, alias) in alias_map))
                 end

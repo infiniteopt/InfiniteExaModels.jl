@@ -126,7 +126,7 @@ function _process_candidate_constraint_group(
                 return false, core
             end
             base_idxs = _index_params(vref, data)
-            itr_alias = Symbol("grouped_var$group_var_idx")
+            itr_alias = Symbol("grouped_vidx$group_var_idx")
             var_idxs = (base_idxs..., ExaModels.DataSource()[itr_alias])
             src_var = data.var_to_grouped_var[vref]
             exafied_vrefs[i] = src_var[var_idxs...]
@@ -181,7 +181,7 @@ function _process_candidate_constraint_group(
         base_idx = (i - 1) * inf_len + 1
         sliced_itr = itr[base_idx:base_idx + inf_len - 1]
         offset = con.offset + base_idx - 1
-        data.constraint_mappings[cref] = ExaModels.Constraint(con.f, sliced_itr, offset, (1:inf_len,), nothing)
+        data.constraint_mappings[cref] = ExaModels.Constraint(con.f, sliced_itr, offset, (inf_len,), nothing)
     end
     return true, core
 end

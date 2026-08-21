@@ -521,13 +521,13 @@ function InfiniteOpt.update_parameter_value(
     value::Real
     )
     data = InfiniteOpt.transformation_data(backend)
-    core = backend.core
+    model = backend.model
     pref = InfiniteOpt.GeneralVariableRef(pref)
     # Check if the mapping exists
     haskey(data.param_mappings, pref) || return false
     # Update the value in the ExaCore, which updates the ExaModel too
-    ExaModels.set_parameter!(
-        core,
+    ExaModels.set_value!(
+        model,
         InfiniteOpt.transformation_variable(pref),
         [value]
     )
@@ -541,7 +541,7 @@ function InfiniteOpt.update_parameter_value(
     value::Function
     )
     data = InfiniteOpt.transformation_data(backend)
-    core = backend.core
+    model = backend.model
     supps = InfiniteOpt.variable_supports(pfref, backend; label = InfiniteOpt.All)
     pfref = InfiniteOpt.GeneralVariableRef(pfref)
     # Check if the mapping exists
@@ -550,7 +550,7 @@ function InfiniteOpt.update_parameter_value(
     vals = map(supp -> value(supp...), supps)
     # Update the values in the ExaCore, which updates the ExaModel too
     param = InfiniteOpt.transformation_variable(pfref)
-    ExaModels.set_parameter!(core, param, vals)
+    ExaModels.set_value!(model, param, vals)
     return true
 end
 

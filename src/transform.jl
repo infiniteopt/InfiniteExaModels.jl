@@ -801,7 +801,7 @@ function _add_collocation_restrictions(
             aliases = (data.group_alias[g] for g in group_idxs)
             itrs = (g == pref_group ? pref_itr : data.base_itrs[g] for g in group_idxs)
             if group_constraints
-                finite_itr = [(; :grouped_var => _get_grouped_idx(vref, data)) for vref in vrefs]
+                finite_itr = [(; :grouped_vidx => _get_grouped_idx(vref, data)) for vref in vrefs]
                 itr = vec([merge(i...) for i in Iterators.product(itrs..., finite_itr)])
             else
                 itr = vec([merge(i...) for i in Iterators.product(itrs...)])

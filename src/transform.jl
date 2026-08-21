@@ -824,20 +824,24 @@ end
     ExaModels.ExaCore(
         inf_model::InfiniteOpt.InfiniteModel,
         data::ExaMappingData;
-        [backend = nothing]
+        [backend = nothing,
+        concrete_core::Bool = false]
     )::ExaModels.ExaCore
 
 Create `ExaModels.ExaCore` from `inf_model` using the provided
 `ExaMappingData` to store the variable and constraint mappings.
+The setting `concrete_core = true` will create a concrete 
+`ExaModels.ExaCore` type, which is useful for performance in some cases.
 """
 function ExaModels.ExaCore(
     inf_model::InfiniteOpt.InfiniteModel,
     data::ExaMappingData;
-    backend = nothing
+    backend = nothing,
+    concrete_core::Bool = false
     )
     # TODO add support for other float types once InfiniteOpt does
     minimize = JuMP.objective_sense(inf_model) == _MOI.MIN_SENSE
-    core = ExaModels.ExaCore(; backend = backend, minimize = minimize, concrete = Val(true))
+    core = ExaModels.ExaCore(; backend = backend, minimize = minimize, concrete = Val(concrete_core))
     return build_exa_core!(core, data, inf_model)
 end
 
@@ -845,18 +849,22 @@ end
     ExaModels.ExaModel(
         inf_model::InfiniteOpt.InfiniteModel,
         [data::ExaMappingData];
-        [backend = nothing]
+        [backend = nothing,
+        concrete_core::Bool = false]
     )::ExaModels.ExaModel
 
 Create an `ExaModels.ExaModel` from `inf_model` and store the mappings in
 `data`. If `data` is not provided, the mappings cannot be readily extracted.
+The `concrete_core` setting will create a concrete `ExaModels.ExaCore` type, 
+which is useful for performance in some cases.
 """
 function ExaModels.ExaModel(
     inf_model::InfiniteOpt.InfiniteModel,
     data::ExaMappingData;
-    backend = nothing
+    backend = nothing,
+    concrete_core::Bool = false
     )
-    core = ExaModels.ExaCore(inf_model, data; backend = backend)
+    core = ExaModels.ExaCore(inf_model, data; backend = backend, concrete_core = concrete_core)
     return ExaModels.ExaModel(core)
 end
 function ExaModels.ExaModel(inf_model::InfiniteOpt.InfiniteModel; backend = nothing)

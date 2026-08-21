@@ -1082,7 +1082,7 @@ function ExaModels.ExaCore(
     inf_model::InfiniteOpt.InfiniteModel,
     data::ExaMappingData;
     backend = nothing,
-    concrete_core::Bool = false
+    concrete_core::Bool = false,
     group_repeated_constraint_patterns = false
     )
     # TODO add support for other float types once InfiniteOpt does

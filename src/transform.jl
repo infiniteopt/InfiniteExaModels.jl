@@ -472,6 +472,15 @@ function _add_constraints(
             restriction = InfiniteOpt.domain_restriction(cref)
             itr = filter(i -> _support_in_restriction(restriction, i, data), itr)
         end
+        if set isa _MOI.VectorNonlinearOracle
+            core = _add_oracle(
+                core,
+                constr.func,
+                set,
+                inf_model,
+            )
+            continue
+        end
         # create the ExaModels expression tree based on expr
         data_src = ExaModels.DataSource()
         em_expr = _finalize_expr(_exafy(expr, data_src, data))
@@ -480,6 +489,162 @@ function _add_constraints(
         # create the ExaModels constraint
         core, con = ExaModels.add_con(core, em_expr, itr, lcon = lb, ucon = ub)
         data.constraint_mappings[cref] = con
+    end
+    return core
+end
+
+function _add_oracle(
+    core::ExaModels.ExaCore,
+    vrefs::Vector{InfiniteOpt.GeneralVariableRef},
+    set::_MOI.VectorNonlinearOracle,
+    inf_model::InfiniteOpt.InfiniteModel
+)
+    # Get the indices of the relevant input VS output variables
+    in_dim = set.input_dimension - set.output_dimension 
+    moi_in_idxs = 1:in_dim
+    moi_out_idxs = (in_dim+1):length(vrefs)
+
+    # Extract the relevant ExaModels variables
+    invars = []
+    outvars = []
+    for i in eachindex(vrefs)
+        if i in moi_in_idxs
+            push!(invars, InfiniteOpt.transformation_variable(vrefs[i]))
+        elseif i in moi_out_idxs
+            push!(outvars, InfiniteOpt.transformation_variable(vrefs[i]))
+        end
+    end
+    
+    # Ensure all variable references in vrefs have the same number of supports
+    nsupps = unique([length(InfiniteOpt.supports(v, label = InfiniteOpt.All)) for v in vrefs])
+    @assert length(nsupps) == 1 "All input/output variable references must have the same number of supports, found $(nsupps) different numbers."
+    nsupps = only(nsupps)
+
+    # Loop over all transcription points
+    for t in 1:nsupps
+        # Extract indices of relevant input/output variables at this transcription point
+        in_idxs = [v[t].i for v in invars]
+        out_idxs = [v[t].i for v in outvars]
+
+        # Convert MOI callbacks to ExaModels callback format
+        _f! = let x_idx = in_idxs, z_idx = out_idxs
+            (c, xv) -> begin
+                # MOI callback func takes a vector of size input_dim + output_dim
+                in_vec = Float32.(vcat(view(xv, x_idx), zeros(set.output_dimension)))
+                set.eval_f(c, in_vec)
+                c .= view(xv, z_idx) .- c
+                nothing
+            end
+        end
+
+        _jvp! = let x_idx = in_idxs, z_idx = out_idxs
+            (Jv, xv, v) -> begin
+                in_vec = Float32.(vcat(view(xv, x_idx), zeros(set.output_dimension)))
+                J_vals = zeros(Float32, length(set.jacobian_structure))
+                set.eval_jacobian(J_vals, in_vec)
+                fill!(Jv, 0)
+                for k in eachindex(J_vals)
+                    row, col = set.jacobian_structure[k]
+
+                    # Ignore MOI's z columns
+                    # Only use predictor inputs
+                    if col <= length(x_idx)
+                        Jv[row] += J_vals[k] * v[x_idx[col]]
+                    end
+                end
+
+                Jv .= view(v, z_idx) .- Jv
+                nothing
+            end
+        end
+
+        _vjp! = let x_idx = in_idxs, z_idx = out_idxs
+            (Jtv, xv, w) -> begin
+                in_vec = Float32.(vcat(view(xv, x_idx), zeros(set.output_dimension)))
+                J_vals = zeros(Float32, length(set.jacobian_structure))
+                set.eval_jacobian(J_vals, in_vec)
+                fill!(Jtv, zero(eltype(Jtv)))
+                for k in eachindex(J_vals)
+                    row, col = set.jacobian_structure[k]
+                    if col <= length(x_idx)
+                        Jtv[x_idx[col]] -= J_vals[k] * w[row]
+                    end
+                end
+                Jtv[z_idx] .+= w
+                nothing
+            end
+        end
+
+        _hvp! = if set.eval_hessian_lagrangian !== nothing
+            let x_idx = in_idxs
+                (Hv, xv, w, v) -> begin
+                    in_vec = Float32.(vcat(view(xv, x_idx), zeros(set.output_dimension)))
+                    H_vals = zeros(Float32, length(set.hessian_lagrangian_structure))
+                    set.eval_hessian_lagrangian(H_vals, in_vec, w)
+                    fill!(Hv, zero(eltype(Hv)))
+                    for k in eachindex(H_vals)
+                        i, j = set.hessian_lagrangian_structure[k]
+                        hij = H_vals[k]
+
+                        Hv[x_idx[i]] -= hij * v[x_idx[j]]
+
+                        if i != j
+                            Hv[x_idx[j]] -= hij * v[x_idx[i]]
+                        end
+                    end
+                    nothing
+                end
+            end
+        else
+            nothing
+        end
+
+        # convert from local MOI to ExaModels global
+        jac_rows = Int[]
+        jac_cols = Int[]
+
+        for (row, col) in set.jacobian_structure
+            if col <= in_dim
+                push!(jac_rows, row)
+                push!(jac_cols, in_idxs[col])
+            else
+                zlocal = col - in_dim
+                push!(jac_rows, row)
+                push!(jac_cols, out_idxs[zlocal])
+            end
+        end
+
+        hess_rows = Int[]
+        hess_cols = Int[]
+
+        for (i, j) in set.hessian_lagrangian_structure
+            push!(hess_rows, in_idxs[i])
+            push!(hess_cols, in_idxs[j])
+        end
+
+        # Create the ExaModels oracle
+        oracle = ExaModels.VectorNonlinearOracle(;
+            nvar = length(core.x0),
+            ncon = set.output_dimension,
+            nnzj = length(jac_rows),
+            nnzh = length(hess_rows),
+            jac_rows = jac_rows,
+            jac_cols = jac_cols,
+            hess_rows = hess_rows,
+            hess_cols = hess_cols,
+            lcon = -set.l,
+            ucon = -set.u,
+            f! = _f!,
+            jvp! = _jvp!,
+            vjp! = _vjp!,
+            hvp! = _hvp!,
+            # From the ExaModels docs: "Use `adapt=Val(true)` to have arrays
+            # automatically copied to CPU before each callback invocation.
+            adapt = Val(true),
+        )
+
+        # Register the oracle in the ExaCore
+        core = ExaModels.constraint(core, oracle)
     end
     return core
 end

@@ -4,12 +4,12 @@ const _VariableTypeHashingInt = Dict(
     InfiniteOpt.ParameterFunctionIndex => -3,
     InfiniteOpt.InfiniteVariableIndex => -4,
     InfiniteOpt.DerivativeIndex => -4,
-    InfiniteOpt.SemiInfiniteVariableIndex => -4,
-    InfiniteOpt.PointVariableIndex => -4,
-    InfiniteOpt.FiniteVariableIndex => -5,
-    InfiniteOpt.IndependentParameterIndex => -6,
-    InfiniteOpt.DependentParameterIndex => -7,
-    InfiniteOpt.MeasureIndex => -8,
+    InfiniteOpt.SemiInfiniteVariableIndex => -5,
+    InfiniteOpt.PointVariableIndex => -6,
+    InfiniteOpt.FiniteVariableIndex => -7,
+    InfiniteOpt.IndependentParameterIndex => -8,
+    InfiniteOpt.DependentParameterIndex => -9,
+    InfiniteOpt.MeasureIndex => -10,
 )
 
 ## Extract the following from an expression:
@@ -23,7 +23,12 @@ function _encode_expr(c::Real, h::UInt, refs, consts)
     return hash(-1, h), refs, push!(consts, c) # -1 indicates a symbolic constant
 end
 function _encode_expr(v::InfiniteOpt.GeneralVariableRef, h::UInt, refs, consts)
-    return hash(_VariableTypeHashingInt[v.index_type], h), push!(refs, v), consts
+    if v.index_type in (InfiniteOpt.SemiInfiniteVariableIndex, InfiniteOpt.PointVariableIndex)
+        group_idxs = InfiniteOpt.parameter_group_int_indices(InfiniteOpt.infinite_variable_ref(v))
+    else
+        group_idxs = InfiniteOpt.parameter_group_int_indices(v)
+    end
+    return hash((_VariableTypeHashingInt[v.index_type], group_idxs), h), push!(refs, v), consts
 end
 function _encode_expr(
     expr::Union{JuMP.GenericAffExpr{C, V}, JuMP.GenericQuadExpr{C, V}},
@@ -119,15 +124,28 @@ function _process_candidate_constraint_group(
     exafied_vrefs = Vector{Any}(undef, length(vrefs1))
     var_itr = Any[(;) for _ in 1:length(crefs)]
     group_var_idx = 1
+    restricted_idx = 1
     for (i, vref) in enumerate(vrefs1)
         if is_grouped_var[i]
             if !haskey(data.var_to_grouped_var, vref) 
                 _group_info_msg(crefs, "Failure: $(vref) is not a grouped variable/parameter which prevents adding")
                 return false, core
             end
-            base_idxs = _index_params(vref, data)
+            base_idxs = collect(_index_params(vref, data))
             itr_alias = Symbol("grouped_vidx$group_var_idx")
-            var_idxs = (base_idxs..., ExaModels.DataSource()[itr_alias])
+            data_src = ExaModels.DataSource()
+            alias_map = Dict{Int, Symbol}()
+            var_idxs = (begin
+                if k > length(base_idxs) 
+                    data_src[itr_alias]
+                elseif base_idxs[k] isa Int # for restricted variables
+                    alias_map[k] = Symbol("restricted_idx$restricted_idx")
+                    restricted_idx += 1
+                    data_src[alias_map[k]]
+                else
+                    base_idxs[k]
+                end
+            end for k in 1:length(base_idxs)+1)
             src_var = data.var_to_grouped_var[vref]
             exafied_vrefs[i] = src_var[var_idxs...]
             for j in 1:length(crefs)
@@ -137,6 +155,10 @@ function _process_candidate_constraint_group(
                     return false, core
                 end
                 var_itr[j] = (; var_itr[j]..., itr_alias => _get_grouped_idx(infvar, data))
+                if !isempty(alias_map)
+                    ridxs = _index_params(infvar, data)
+                    var_itr[j] = merge(var_itr[j], NamedTuple(alias => ridxs[k] for (k, alias) in alias_map))
+                end
             end
             group_var_idx += 1
         else

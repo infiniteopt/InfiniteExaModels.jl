@@ -297,7 +297,7 @@ function _process_semi_infinite_var(vref, data)
         mapped_var = data.infvar_mappings[ivref]
     end
     if haskey(data.var_to_grouped_var, ivref)
-        data.var_to_grouped_var[vref] = mapped_var
+        data.var_to_grouped_var[vref] = data.var_to_grouped_var[ivref]
     end
     return data.semivar_info[vref] = (mapped_var, indexing)
 end

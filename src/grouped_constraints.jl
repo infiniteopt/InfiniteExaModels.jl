@@ -131,7 +131,7 @@ function _process_candidate_constraint_group(
                 _group_info_msg(crefs, "Failure: $(vref) is not a grouped variable/parameter which prevents adding")
                 return false, core
             end
-            base_idxs = collect(_index_params(vref, data))
+            base_idxs = Tuple(_index_params(vref, data))
             itr_alias = Symbol("grouped_vidx$group_var_idx")
             data_src = ExaModels.DataSource()
             alias_map = Dict{Int, Symbol}()
@@ -156,7 +156,7 @@ function _process_candidate_constraint_group(
                 end
                 var_itr[j] = (; var_itr[j]..., itr_alias => _get_grouped_idx(infvar, data))
                 if !isempty(alias_map) # add in restricted variables indices if they exist
-                    ridxs = _index_params(infvar, data)
+                    ridxs = Tuple(_index_params(infvar, data))
                     var_itr[j] = merge(var_itr[j], NamedTuple(alias => ridxs[k] for (k, alias) in alias_map))
                 end
             end

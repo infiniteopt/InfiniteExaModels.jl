@@ -1,6 +1,3 @@
- # Temporoary hack
- using ExaModels: Constant
-
 # Create the support iterators for each infinite parameter group and add to the mapping data
 function _build_base_iterators(
     data::ExaMappingData,
@@ -103,6 +100,13 @@ function _get_variable_bounds_and_start(info::JuMP.VariableInfo, itrs)
     return lb, ub, start
 end
 
+# Get the name from a GeneralVariableRef
+function _get_name(vref::InfiniteOpt.GeneralVariableRef, default_name = "var")
+    raw_name = JuMP.name(vref)
+    sym_name = isempty(raw_name) ? Symbol("$(default_name)$(vref.raw_index)") : Symbol(raw_name)
+    return Val(sym_name)
+end
+
 # Add all the finite variables from an InfiniteModel to a ExaCore
 function _add_finite_variables(
     core::ExaModels.ExaCore, 
@@ -113,7 +117,8 @@ function _add_finite_variables(
         info = InfiniteOpt.core_object(vref).info # JuMP.VariableInfo
         _ensure_continuous(info)
         lb, ub, start = _get_variable_bounds_and_start(info)
-        core, new_var = ExaModels.add_var(core, 1, start = start, lvar = lb, uvar = ub)
+        vname = _get_name(vref, "finvar")
+        core, new_var = ExaModels.add_var(core, 1, start = start, lvar = lb, uvar = ub, name = vname)
         data.finvar_mappings[vref] = new_var[1]
     end
     return core
@@ -154,7 +159,8 @@ function _add_infinite_variables(
         lb, ub, start = _get_variable_bounds_and_start(info, itrs)
         # create the ExaModels variable
         dims = Tuple(length(itr) for itr in itrs)
-        core, new_var = ExaModels.add_var(core, dims...; start = start, lvar = lb, uvar = ub)
+        vname = _get_name(vref, vref in drefs ? "deriv" : "infvar")
+        core, new_var = ExaModels.add_var(core, dims...; start = start, lvar = lb, uvar = ub, name = vname)
         data.infvar_mappings[vref] = new_var
     end
     return core

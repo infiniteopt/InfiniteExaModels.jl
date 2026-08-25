@@ -116,7 +116,7 @@ function _add_finite_variables(
     )
     vrefs = JuMP.all_variables(inf_model, InfiniteOpt.FiniteVariable)
     if create_variable_groups && length(vrefs) > 1
-        ex_var = ExaModels.Variable((length(vrefs),), length(vrefs), core.nvar, :x, nothing)
+        ex_var = ExaModels.Variable((length(vrefs),), length(vrefs), core.nvar, Val(:grouped_finvar), nothing)
     end
     for vref in vrefs
         info = InfiniteOpt.core_object(vref).info # JuMP.VariableInfo
@@ -199,7 +199,7 @@ function _add_infinite_variables(
             group_vrefs = vref_groups[group_idx]
             v1 = data[first(group_vrefs)]
             num_vars = v1.length * length(group_vrefs)
-            ex_var = ExaModels.Variable((v1.size..., length(group_vrefs)), num_vars, v1.offset, :x, nothing)
+            ex_var = ExaModels.Variable((v1.size..., length(group_vrefs)), num_vars, v1.offset, Val(:grouped_infvar), nothing)
             for vref in group_vrefs
                 data.var_to_grouped_var[vref] = ex_var
             end
@@ -207,7 +207,7 @@ function _add_infinite_variables(
     elseif create_variable_groups
         v1 = data[first(vrefs)]
         num_vars = v1.length * length(vrefs)
-        ex_var = ExaModels.Variable((v1.size..., length(vrefs)), num_vars, v1.offset, :x, nothing)
+        ex_var = ExaModels.Variable((v1.size..., length(vrefs)), num_vars, v1.offset, Val(:grouped_infvar), nothing)
         for vref in vrefs
             data.var_to_grouped_var[vref] = ex_var
         end

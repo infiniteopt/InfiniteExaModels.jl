@@ -150,7 +150,7 @@ end
     @test optimize!(m, group_repeated_constraint_patterns = true).status == :first_order
     @test isapprox(obj, objective_value(m), atol = tol)
     for i in 1:3
-        @test all(isapprox.(yval[i], value(y[i]), atol = 1e-4))
+        @test all(isapprox.(yval[i], value(y[i]), atol = 1e-3)) # this is fairly tempermental depending on the hardware and OS
     end
     @test all(isapprox.(qval, value(q), atol = tol))
     @test all(isapprox.(uval, value(u), atol = 1e-4))

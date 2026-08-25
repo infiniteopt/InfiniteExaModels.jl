@@ -23,8 +23,11 @@ function _encode_expr(c::Real, h::UInt, refs, consts)
     return hash(-1, h), refs, push!(consts, c) # -1 indicates a symbolic constant
 end
 function _encode_expr(v::InfiniteOpt.GeneralVariableRef, h::UInt, refs, consts)
-    if v.index_type in (InfiniteOpt.SemiInfiniteVariableIndex, InfiniteOpt.PointVariableIndex)
+    if v.index_type == InfiniteOpt.PointVariableIndex
         group_idxs = InfiniteOpt.parameter_group_int_indices(InfiniteOpt.infinite_variable_ref(v))
+    elseif v.index_type == InfiniteOpt.SemiInfiniteVariableIndex
+        group_idxs = InfiniteOpt.parameter_group_int_indices(InfiniteOpt.infinite_variable_ref(v))
+        group_idxs = vcat(group_idxs, InfiniteOpt.parameter_group_int_indices(v)) # append the semi-infinite index group indices distinguish y(0, x) from y(t, -1) for example
     else
         group_idxs = InfiniteOpt.parameter_group_int_indices(v)
     end

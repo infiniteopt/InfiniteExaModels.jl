@@ -126,7 +126,7 @@ function _add_finite_variables(
         core, new_var = ExaModels.add_var(core, 1, start = start, lvar = lb, uvar = ub, name = vname)
         data.finvar_mappings[vref] = new_var[1]
         if create_variable_groups
-            data.var_to_grouped_var[vref] = ex_var
+            data.var_to_grouped_var[vref] = length(vrefs) > 1 ? ex_var : new_var
         end
     end
     return core
@@ -148,7 +148,7 @@ function _add_finite_parameters(
         core, new_par = ExaModels.add_par(core, [param_val])
         data.param_mappings[pref] = new_par
         if create_parameter_groups
-            data.var_to_grouped_var[pref] = ex_par
+            data.var_to_grouped_var[pref] = length(prefs) > 1 ? ex_par : new_par
         end
     end
     return core

@@ -677,7 +677,6 @@ function InfiniteOpt.make_reduced_expr(
             return data.infvar_mappings[vref][idx_pars...]
         end
     end
-    return
 end
 
 # Add the approximation equations for each derivative variable
@@ -1099,7 +1098,6 @@ function ExaModels.ExaCore(
         data, 
         inf_model; group_repeated_constraint_patterns = group_repeated_constraint_patterns
     )
-    concrete_core::Bool = false
 end
 
 """

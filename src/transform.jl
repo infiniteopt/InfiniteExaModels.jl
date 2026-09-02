@@ -942,7 +942,7 @@ function _add_objective_aff_term(core, coef, vref, ::Type{InfiniteOpt.MeasureInd
         final_itr = itr
     end
     # prepare the examodel expression tree
-    em_expr = isone(coef) ? c * exafied_expr : coef * (c * exafied_expr)
+    em_expr = isone(coef) ? c * exafied_expr : _exafy(coef, data) * (c * exafied_expr)
     # add the term to the objective
     core, _ = ExaModels.add_obj(core, _finalize_expr(em_expr), final_itr)
     return core

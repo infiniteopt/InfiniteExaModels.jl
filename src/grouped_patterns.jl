@@ -174,7 +174,7 @@ function _process_grouped_expression(
         if is_grouped_data[i]
             itr_alias = Symbol("grouped_const$grouped_const_idx")
             exafied_consts[i] = ExaModels.DataSource()[itr_alias]
-            for j in 1:length(crefs)
+            for j in 1:length(const_lists)
                 const_itr[j] = (; const_itr[j]..., itr_alias => const_lists[j][i])
             end
             grouped_const_idx += 1

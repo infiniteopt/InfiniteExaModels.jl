@@ -268,14 +268,15 @@ function _process_candidate_sum_group(
     )
     expr.head == :+ || return _exafy(expr, data), [(;)] # TODO: check for other sum-like operations
     length(expr.args) == 1 && _process_candidate_sum_group(expr.args[1], data)
-    vref_lists = Vector{Vector{InfiniteOpt.GeneralVariableRef}}(undef, length(expr.args))
-    const_lists = Vector{Vector{Float64}}(undef, length(expr.args))
-    hs = Vector{UInt}(undef, length(expr.args))
-    for (i, arg) in enumerate(expr.args)
+    flat_expr = JuMP.flatten!(JuMP.GenericNonlinearExpr(expr.head, copy(expr.args)))
+    vref_lists = Vector{Vector{InfiniteOpt.GeneralVariableRef}}(undef, length(flat_expr.args))
+    const_lists = Vector{Vector{Float64}}(undef, length(flat_expr.args))
+    hs = Vector{UInt}(undef, length(flat_expr.args))
+    for (i, arg) in enumerate(flat_expr.args)
         hs[i], vref_lists[i], const_lists[i] = _encode_expr(arg)
     end
     all(hs[1] == h for h in hs) || return _exafy(expr, data), [(;)] # TODO: perhaps we can break this up
-    return _process_grouped_expression(expr.args[1], vref_lists, const_lists, data)
+    return _process_grouped_expression(flat_expr.args[1], vref_lists, const_lists, data)
 end
 # Fallback for other expressions
 function _process_candidate_sum_group(

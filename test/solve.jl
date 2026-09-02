@@ -112,7 +112,7 @@ end
     c2_duals = dual.(c2)
     @test set_transformation_backend(m, ExaTranscriptionBackend(IpoptSolver)) isa Nothing
     @test set_silent(m) isa Nothing
-    @test optimize!(m, group_repeated_constraint_patterns = true).status == :first_order
+    @test optimize!(m, group_repeated_algebraic_patterns = true).status == :first_order
     @test isapprox(obj, objective_value(m), atol = tol)
     for i in 1:3
         @test all(isapprox.(xval[i], value(x[i]), atol = tol))
@@ -147,7 +147,7 @@ end
     zval = value.(z)
     @test set_transformation_backend(m, ExaTranscriptionBackend(IpoptSolver)) isa Nothing
     @test set_silent(m) isa Nothing
-    @test optimize!(m, group_repeated_constraint_patterns = true).status == :first_order
+    @test optimize!(m, group_repeated_algebraic_patterns = true).status == :first_order
     @test isapprox(obj, objective_value(m), atol = tol)
     for i in 1:3
         @test all(isapprox.(yval[i], value(y[i]), atol = 1e-3)) # this is fairly tempermental depending on the hardware and OS

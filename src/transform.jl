@@ -921,29 +921,44 @@ end
 
 # Helper function for adding "affine" terms as independent objective terms 
 # Note the `coef` doesn't have to be a constant, it can be an expression that doesn't contain measures
-function _add_objective_aff_term(core, coef, vref, data)
-    return _add_objective_aff_term(core, coef, vref, vref.index_type, data)
+function _add_objective_aff_term(core, coef, vref, data, group_repeated_sums = false)
+    return _add_objective_aff_term(core, coef, vref, vref.index_type, data, group_repeated_sums)
 end
-function _add_objective_aff_term(core, coef, vref, ::Type{InfiniteOpt.MeasureIndex}, data)
+function _add_objective_aff_term(core, coef, vref, ::Type{InfiniteOpt.MeasureIndex}, data, group_repeated_sums)
     # process the measure structure recursively as needed
     mexpr, itr = _process_measure_sum(vref, data)
+    # form the exafied expression and iterator
+    c = ExaModels.DataSource()[:c]
+    if group_repeated_sums
+        exafied_expr, finite_itr = _process_candidate_sum_group(mexpr, data)
+        if length(finite_itr) > 1
+            @info "Successfully grouped $(length(finite_itr)) finite terms together into a single objective pattern."
+            final_itr = vec([merge(i...) for i in Iterators.product(itr, finite_itr)])
+        else
+            final_itr = itr
+        end
+    else
+        exafied_expr = _exafy(mexpr, data)
+        final_itr = itr
+    end
     # prepare the examodel expression tree
-    data_src = ExaModels.DataSource()
-    em_expr = data_src.c * _exafy(coef * mexpr, data)
+    em_expr = isone(coef) ? c * exafied_expr : coef * (c * exafied_expr)
     # add the term to the objective
-    core, _ = ExaModels.add_obj(core, _finalize_expr(em_expr), itr)
+    core, _ = ExaModels.add_obj(core, _finalize_expr(em_expr), final_itr)
     return core
 end
-function _add_objective_aff_term(core, coef, vref, _, data)
-    return _add_generic_objective_term(core, coef * vref, data)
+function _add_objective_aff_term(core, coef, vref, _, data, group_repeated_sums)
+    expr = isone(coef) ? vref : coef * vref
+    return _add_generic_objective_term(core, expr, data)
 end
 
 # Add the objective from an InfiniteModel to an ExaCore
 function _add_objective(
     core::ExaModels.ExaCore,
-    expr::JuMP.AbstractJuMPScalar,
+    expr::JuMP.AbstractJuMPScalar, # generic fallback (heuristics fail to find a summed measure structure)
     data::ExaMappingData, 
-    inf_model::InfiniteOpt.InfiniteModel
+    inf_model::InfiniteOpt.InfiniteModel;
+    group_repeated_sums::Bool = false
     )
     vrefs = InfiniteOpt.all_expression_variables(expr)
     if any(v.index_type == InfiniteOpt.MeasureIndex for v in vrefs)
@@ -956,19 +971,21 @@ function _add_objective(
     core::ExaModels.ExaCore,
     vref::InfiniteOpt.GeneralVariableRef, # can be finite var, point var, finite param, or measure that fully evaluates the measures inside
     data::ExaMappingData, 
-    ::InfiniteOpt.InfiniteModel
+    ::InfiniteOpt.InfiniteModel;
+    group_repeated_sums::Bool = false
     )
-    return _add_objective_aff_term(core, 1.0, vref, data)
+    return _add_objective_aff_term(core, 1.0, vref, data, group_repeated_sums)
 end
 function _add_objective(
     core::ExaModels.ExaCore,
     aff::JuMP.GenericAffExpr,
     data::ExaMappingData,
-    ::InfiniteOpt.InfiniteModel
+    ::InfiniteOpt.InfiniteModel;
+    group_repeated_sums::Bool = false
     )
-    # TODO should we check if there are a lot of terms?
+    # TODO should we check if there are a lot of terms? (use group_repeated_sums)
     for (coef, vref) in JuMP.linear_terms(aff)
-        core = _add_objective_aff_term(core, coef, vref, data)
+        core = _add_objective_aff_term(core, coef, vref, data, group_repeated_sums)
     end
     c = JuMP.constant(aff)
     if !iszero(c)
@@ -980,7 +997,8 @@ function _add_objective(
     core::ExaModels.ExaCore,
     quad::InfiniteOpt.GenericQuadExpr,
     data::ExaMappingData, 
-    inf_model::InfiniteOpt.InfiniteModel
+    inf_model::InfiniteOpt.InfiniteModel;
+    group_repeated_sums::Bool = false
     )
     # process the quadratic terms
     for (coef, vref1, vref2) in JuMP.quad_terms(quad)
@@ -990,9 +1008,9 @@ function _add_objective(
             new_expr = InfiniteOpt.expand_measures(coef * vref1 * vref2, inf_model)
             core = _add_generic_objective_term(core, new_expr, data)
         elseif vref1.index_type == InfiniteOpt.MeasureIndex
-            core = _add_objective_aff_term(core, coef * vref2, vref1, data)
+            core = _add_objective_aff_term(core, coef * vref2, vref1, data, group_repeated_sums)
         else
-            core = _add_objective_aff_term(core, coef * vref1, vref2, data)
+            core = _add_objective_aff_term(core, coef * vref1, vref2, data, group_repeated_sums)
         end
     end
     # add the affine terms
@@ -1006,7 +1024,7 @@ function build_exa_core!(
     core::ExaModels.ExaCore, 
     data::ExaMappingData,
     inf_model::InfiniteOpt.InfiniteModel;
-    group_repeated_constraint_patterns = false
+    group_repeated_algebraic_patterns = false
     )
     # initial setup
     _build_base_iterators(data, inf_model)
@@ -1015,32 +1033,32 @@ function build_exa_core!(
         core,
         data,
         inf_model,
-        create_parameter_groups = group_repeated_constraint_patterns
+        create_parameter_groups = group_repeated_algebraic_patterns
     )
     core = _add_finite_variables(
         core,
         data,
         inf_model,
-        create_variable_groups = group_repeated_constraint_patterns
+        create_variable_groups = group_repeated_algebraic_patterns
     )
     core = _add_infinite_variables( # includes derivatives
         core,
         data,
         inf_model,
-        create_variable_groups = group_repeated_constraint_patterns
+        create_variable_groups = group_repeated_algebraic_patterns
     )
     core = _add_parameter_functions(
         core,
         data,
         inf_model,
-        create_parameter_groups = group_repeated_constraint_patterns
+        create_parameter_groups = group_repeated_algebraic_patterns
     )
     _add_semi_infinite_variables(core, data, inf_model)
     _add_point_variables(core, data, inf_model)
     # account for user-defined nonlinear operators
     _add_user_operators(inf_model)
     # add the constraints
-    if group_repeated_constraint_patterns
+    if group_repeated_algebraic_patterns
         core = _group_and_add_constraints(core, data, inf_model) # TODO: can eventually replace `_add_constraints` if it works well
     end
     core = _add_constraints(core, data, inf_model)
@@ -1048,19 +1066,25 @@ function build_exa_core!(
         core,
         data,
         inf_model,
-        group_constraints = group_repeated_constraint_patterns
+        group_constraints = group_repeated_algebraic_patterns
     )
     core = _add_collocation_restrictions(
         core,
         data,
         inf_model,
-        group_constraints = group_repeated_constraint_patterns
+        group_constraints = group_repeated_algebraic_patterns
     )
     # add the objective if there is one
     expr = JuMP.objective_function(inf_model)
     sense = JuMP.objective_sense(inf_model)
     if sense != _MOI.FEASIBILITY_SENSE
-        core = _add_objective(core, expr, data, inf_model)
+        core = _add_objective(
+            core, 
+            expr, 
+            data, 
+            inf_model, 
+            group_repeated_sums = group_repeated_algebraic_patterns
+        )
     end
     return core
 end
@@ -1071,16 +1095,15 @@ end
         data::ExaMappingData;
         [backend = nothing,
         concrete_core::Bool = false,
-        group_repeated_constraint_patterns = false] # experimental
+        group_repeated_algebraic_patterns = false] # experimental
     )::ExaModels.ExaCore
 
 Create `ExaModels.ExaCore` from `inf_model` using the provided
 `ExaMappingData` to store the variable and constraint mappings. 
 The setting `concrete_core = true` will create a concrete 
 `ExaModels.ExaCore` type, which is useful for performance in some cases.
-Optionally, try to aggregate common algebraic constraint structures
-over a named constraint array (e.g., `@constraint(model, con[i=1:N], ...)`)
-by setting `group_repeated_constraint_patterns = true`. This is an 
+Optionally, try to aggregate common algebraic constraint and objective patterns
+by setting `group_repeated_algebraic_patterns = true`. This is an 
 experimental feature that may encounter issues and may be removed/modified in the future.
 """
 function ExaModels.ExaCore(
@@ -1088,7 +1111,7 @@ function ExaModels.ExaCore(
     data::ExaMappingData;
     backend = nothing,
     concrete_core::Bool = false,
-    group_repeated_constraint_patterns = false
+    group_repeated_algebraic_patterns = false
     )
     # TODO add support for other float types once InfiniteOpt does
     minimize = JuMP.objective_sense(inf_model) == _MOI.MIN_SENSE
@@ -1096,7 +1119,7 @@ function ExaModels.ExaCore(
     return build_exa_core!(
         core,
         data, 
-        inf_model; group_repeated_constraint_patterns = group_repeated_constraint_patterns
+        inf_model; group_repeated_algebraic_patterns = group_repeated_algebraic_patterns
     )
 end
 
@@ -1106,16 +1129,15 @@ end
         [data::ExaMappingData];
         [backend = nothing,
         concrete_core::Bool = false,
-        group_repeated_constraint_patterns = false] # experimental
+        group_repeated_algebraic_patterns = false] # experimental
     )::ExaModels.ExaModel
 
 Create an `ExaModels.ExaModel` from `inf_model` and store the mappings in
 `data`. If `data` is not provided, the mappings cannot be readily extracted.
 The `concrete_core` setting will create a concrete `ExaModels.ExaCore` type, 
 which is useful for performance in some cases.
-Optionally, try to aggregate common algebraic constraint structures
-over a named constraint array (e.g., `@constraint(model, con[i=1:N], ...)`)
-by setting `group_repeated_constraint_patterns = true`. This is an 
+Optionally, try to aggregate common algebraic constraint/objective patterns
+by setting `group_repeated_algebraic_patterns = true`. This is an 
 experimental feature that may encounter issues and may be removed/modified in the future.
 """
 function ExaModels.ExaModel(
@@ -1123,26 +1145,26 @@ function ExaModels.ExaModel(
     data::ExaMappingData;
     backend = nothing,
     concrete_core::Bool = false,
-    group_repeated_constraint_patterns = false
+    group_repeated_algebraic_patterns = false
     )
     core = ExaModels.ExaCore(
         inf_model,
         data; 
         backend = backend, 
         concrete_core = concrete_core,
-        group_repeated_constraint_patterns = group_repeated_constraint_patterns
+        group_repeated_algebraic_patterns = group_repeated_algebraic_patterns
     )
     return ExaModels.ExaModel(core)
 end
 function ExaModels.ExaModel(
     inf_model::InfiniteOpt.InfiniteModel;
     backend = nothing,
-    group_repeated_constraint_patterns = false
+    group_repeated_algebraic_patterns = false
 )
     return ExaModels.ExaModel(
         inf_model,
         ExaMappingData();
         backend = backend,
-        group_repeated_constraint_patterns = group_repeated_constraint_patterns
+        group_repeated_algebraic_patterns = group_repeated_algebraic_patterns
     )
 end

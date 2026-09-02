@@ -99,7 +99,7 @@ end
     @variable(m, u, Infinite(t))
     @finite_parameter(m, p == 1.0)
     @parameter_function(m, pf == t->2*t)
-    @objective(m, Min, ∫(sum((x[i] - p)^2 for i in 1:3), t))
+    @objective(m, Min, ∫(sum(@force_nonlinear((x[i] - p)^2) for i in 1:3), t))
     @constraint(m, c1[i in 1:3], ∂(x[i], t) == u^(i+2) - pf)
     @constraint(m, c2[i in 1:3], x[i] <= i)
     @constraint(m, c3[i in 1:3], x[i](0) == 0.1*i)

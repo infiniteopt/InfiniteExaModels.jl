@@ -6,7 +6,7 @@ import InfiniteOpt.TranscriptionOpt as _TO
 
 include("infiniteopt_backend.jl")
 include("operators.jl")
-include("grouped_constraints.jl")
+include("grouped_patterns.jl")
 include("transform.jl")
 
 export ExaMappingData, ExaTranscriptionBackend

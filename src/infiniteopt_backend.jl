@@ -96,7 +96,7 @@ where `solver_type` is an optimizer constructor from the JuliaSmoothOptimizers e
 """
 mutable struct ExaTranscriptionBackend{B} <: InfiniteOpt.AbstractTransformationBackend
     core::Union{Nothing, ExaModels.ExaCore}
-    model::Union{Nothing, ExaModels.ExaModel}
+    model::Union{Nothing, ExaModels.ExaModel, ExaModels.ExaModelWithOracle}
     backend::B
     solver::Any
     prev_options::Dict{Symbol, Any}

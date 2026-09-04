@@ -1060,8 +1060,12 @@ function build_exa_core!(
     # add the constraints
     if group_repeated_algebraic_patterns
         core = _group_and_add_constraints(core, data, inf_model) # TODO: can eventually replace `_add_constraints` if it works well
+        num_grouped_constraints = length(core.cons)
     end
     core = _add_constraints(core, data, inf_model)
+    if group_repeated_algebraic_patterns
+        num_ungrouped_constraints = length(core.cons) - num_grouped_constraints
+    end
     core = _add_derivative_approximations(
         core,
         data,
@@ -1085,6 +1089,12 @@ function build_exa_core!(
             inf_model, 
             group_repeated_sums = group_repeated_algebraic_patterns
         )
+    end
+    if group_repeated_algebraic_patterns
+        num_con_patterns = length(core.cons)
+        num_grouped_constraints = num_con_patterns - num_ungrouped_constraints
+        @info "In total, $num_con_patterns constraint pattern(s) was/were added of which $num_grouped_constraints are grouped constraints."
+        @info "In total, $(length(core.obj)) objective sum pattern(s) was/were added. Check the logs to determine how many were grouped."
     end
     return core
 end

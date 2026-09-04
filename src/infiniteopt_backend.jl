@@ -31,6 +31,10 @@ struct ExaMappingData
             Vector{Any}
         }
     }
+    # Point variable info
+    point_indicies::Dict{InfiniteOpt.GeneralVariableRef, Tuple}
+    # Finite template constraint metadata
+    var_to_grouped_var::Dict{InfiniteOpt.GeneralVariableRef, Union{ExaModels.Variable, ExaModels.Parameter}}
     
     # Default constructor
     function ExaMappingData()
@@ -52,6 +56,8 @@ struct ExaMappingData
                     Vector{Any}
                 }
             }(),
+            Dict{InfiniteOpt.GeneralVariableRef, Tuple}(),
+            Dict{InfiniteOpt.GeneralVariableRef, Union{ExaModels.Variable, ExaModels.Parameter}}(),
         )
     end
 end
@@ -109,7 +115,7 @@ mutable struct ExaTranscriptionBackend{B} <: InfiniteOpt.AbstractTransformationB
 end
 
 # Constructors
-function ExaTranscriptionBackend(; backend = nothing)
+function ExaTranscriptionBackend(; backend = nothing, )
     return ExaTranscriptionBackend(
         nothing,
         nothing,

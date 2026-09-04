@@ -559,8 +559,10 @@ function InfiniteOpt.update_start_value(
     if haskey(data.infvar_mappings, gvref)
         var = data[gvref]
         @view(backend.core.x0[var.offset+1:var.offset+var.length]) .= value
+        @view(NLPModels.get_x0(backend.model)[var.offset+1:var.offset+var.length]) .= value
     elseif haskey(data.finvar_mappings, gvref)
         backend.core.x0[data[gvref].i] = value
+        NLPModels.get_x0(backend.model)[data[gvref].i] = value
     else
         return false
     end
@@ -589,6 +591,7 @@ function InfiniteOpt.update_start_value(
     end
     var = data[gvref]
     copyto!(@view(backend.core.x0[var.offset+1:var.offset+var.length]), start)
+    copyto!(@view(NLPModels.get_x0(backend.model)[var.offset+1:var.offset+var.length]), start)
     return true
 end
 

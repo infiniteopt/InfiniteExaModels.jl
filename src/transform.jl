@@ -51,8 +51,7 @@ _process_value(pf::InfiniteOpt.ParameterFunction, supp) = pf(supp)
 ## Determine the bounds of an InfiniteOpt variable
 # Real bound and start value
 function _get_variable_bounds_and_start(
-    info::JuMP.VariableInfo{<:Real, <:Real, <:Real, <:Real},
-    itrs = nothing
+    info::JuMP.VariableInfo{<:Real, <:Real, <:Real, <:Real}
     )
     lb = -Inf
     ub = Inf
@@ -76,25 +75,26 @@ end
 function _get_variable_bounds_and_start(info::JuMP.VariableInfo, itrs)
     # set up the collection arrays
     dims = Tuple(length(itr) for itr in itrs)
-    lb = fill(-Inf, dims)
-    ub = fill(Inf, dims)
-    start = fill(0.0, dims)
+    lin_idxs = LinearIndices(dims)
+    lb = fill(-Inf, length(lin_idxs))
+    ub = fill(Inf, length(lin_idxs))
+    start = fill(0.0, length(lin_idxs))
     # iterate over all support combinations and fill in the arrays
     for i in Iterators.product(itrs...)
         supp = [s for nt in i for s in Iterators.drop(values(nt), 1)]
         if info.has_fix
             val = _process_value(info.fixed_value, supp)
-            lb[first.(i)...] = val
-            ub[first.(i)...] = val
+            lb[lin_idxs[first.(i)...]] = val
+            ub[lin_idxs[first.(i)...]] = val
         end
         if info.has_lb
-            lb[first.(i)...] = _process_value(info.lower_bound, supp)
+            lb[lin_idxs[first.(i)...]] = _process_value(info.lower_bound, supp)
         end
         if info.has_ub
-            ub[first.(i)...] = _process_value(info.upper_bound, supp)
+            ub[lin_idxs[first.(i)...]] = _process_value(info.upper_bound, supp)
         end
         if info.has_start
-            start[first.(i)...] = _process_value(info.start, supp)
+            start[lin_idxs[first.(i)...]] = _process_value(info.start, supp)
         end
     end
     return lb, ub, start
@@ -104,30 +104,27 @@ end
 function _get_name(vref::InfiniteOpt.GeneralVariableRef, default_name = "var")
     raw_name = JuMP.name(vref)
     sym_name = isempty(raw_name) ? Symbol("$(default_name)$(vref.raw_index)") : Symbol(raw_name)
-    return Val(sym_name)
+    return sym_name
 end
 
 # Add all the finite variables from an InfiniteModel to a ExaCore
 function _add_finite_variables(
     core::ExaModels.ExaCore, 
     data::ExaMappingData,
-    inf_model::InfiniteOpt.InfiniteModel;
-    create_variable_groups::Bool = false
+    inf_model::InfiniteOpt.InfiniteModel
     )
     vrefs = JuMP.all_variables(inf_model, InfiniteOpt.FiniteVariable)
-    if create_variable_groups && length(vrefs) > 1
-        ex_var = ExaModels.Variable((length(vrefs),), length(vrefs), core.nvar, :grouped_finvar, nothing)
-    end
-    for vref in vrefs
+    core, ex_vars = ExaModels.add_var(core, length(vrefs), name = Val(:finvar))
+    for (i, vref) in enumerate(vrefs)
         info = InfiniteOpt.core_object(vref).info # JuMP.VariableInfo
         _ensure_continuous(info)
         lb, ub, start = _get_variable_bounds_and_start(info)
-        vname = _get_name(vref, "finvar")
-        core, new_var = ExaModels.add_var(core, 1, start = start, lvar = lb, uvar = ub, name = vname)
-        data.finvar_mappings[vref] = new_var[1]
-        if create_variable_groups
-            data.var_to_grouped_var[vref] = length(vrefs) > 1 ? ex_var : new_var
-        end
+        ex_var = ex_vars[i]
+        data.finvar_mappings[vref] = ex_var
+        core.lvar[ex_var.i] = lb
+        core.uvar[ex_var.i] = ub
+        core.x0[ex_var.i] = start
+        data.var_to_grouped_var[vref] = ex_vars
     end
     return core
 end
@@ -136,20 +133,15 @@ end
 function _add_finite_parameters(
     core::ExaModels.ExaCore, 
     data::ExaMappingData,
-    inf_model::InfiniteOpt.InfiniteModel;
-    create_parameter_groups::Bool = false
+    inf_model::InfiniteOpt.InfiniteModel
     )
     prefs = JuMP.all_variables(inf_model, InfiniteOpt.FiniteParameter)
-    if create_parameter_groups && length(prefs) > 1
-        ex_par = ExaModels.Parameter((length(prefs),), length(prefs), core.npar, nothing)
-    end
-    for pref in prefs
-        param_val = InfiniteOpt.parameter_value(pref)
-        core, new_par = ExaModels.add_par(core, [param_val])
-        data.param_mappings[pref] = new_par
-        if create_parameter_groups
-            data.var_to_grouped_var[pref] = length(prefs) > 1 ? ex_par : new_par
-        end
+    core, ex_pars = ExaModels.add_par(core, length(prefs))
+    offset = ex_pars.offset
+    for (i, pref) in enumerate(prefs)
+        data.param_mappings[pref] = ExaModels.Parameter((1,), 1, offset + i - 1, nothing)
+        core.θ[offset + i] = InfiniteOpt.parameter_value(pref)
+        data.var_to_grouped_var[pref] = ex_pars
     end
     return core
 end
@@ -158,58 +150,45 @@ end
 function _add_infinite_variables(
     core::ExaModels.ExaCore, 
     data::ExaMappingData,
-    inf_model::InfiniteOpt.InfiniteModel;
-    create_variable_groups::Bool = false
+    inf_model::InfiniteOpt.InfiniteModel
     )
-    # Get the raw variables
+    # get the raw variables
     ivrefs = JuMP.all_variables(inf_model, InfiniteOpt.InfiniteVariable)
     InfiniteOpt.reformulate_high_order_derivatives!(inf_model)
     drefs = InfiniteOpt.all_derivatives(inf_model)
     vrefs = append!(ivrefs, drefs)
-    # sort by infinite parameter groups (required to capture repeated finite patterns)
-    if create_variable_groups && length(data.base_itrs) > 1
-        all_group_idxs = map(v -> InfiniteOpt.parameter_group_int_indices(v), vrefs)
-        sorted_int_idxs = sortperm(all_group_idxs)
-        permute!(vrefs, sorted_int_idxs)
-        permute!(all_group_idxs, sorted_int_idxs)
-        group_types = unique(all_group_idxs)
-        vref_groups = Dict(t => InfiniteOpt.GeneralVariableRef[] for t in group_types)
-        for (vref, group_idx) in zip(vrefs, all_group_idxs)
-            push!(vref_groups[group_idx], vref)
-        end
-    end
-    # now process and add each infinite variable
-    for vref in vrefs
-        # retrieve basic information
-        info = InfiniteOpt.core_object(vref).info # JuMP.VariableInfo
-        _ensure_continuous(info)
-        group_idxs = InfiniteOpt.parameter_group_int_indices(vref)
-        # prepare the bounds and start values
-        itrs = map(i -> data.base_itrs[i], group_idxs)
-        lb, ub, start = _get_variable_bounds_and_start(info, itrs)
-        # create the ExaModels variable
-        dims = Tuple(length(itr) for itr in itrs)
-        vname = _get_name(vref, vref in drefs ? "deriv" : "infvar")
-        core, new_var = ExaModels.add_var(core, dims...; start = start, lvar = lb, uvar = ub, name = vname)
-        data.infvar_mappings[vref] = new_var
-    end
-    # process and store a grouped variable for each group of variables with common infinite parameter groups
-    if create_variable_groups && length(data.base_itrs) > 1
-        for group_idx in group_types
-            group_vrefs = vref_groups[group_idx]
-            v1 = data[first(group_vrefs)]
-            num_vars = v1.length * length(group_vrefs)
-            ex_var = ExaModels.Variable((v1.size..., length(group_vrefs)), num_vars, v1.offset, :grouped_infvar, nothing)
-            for vref in group_vrefs
-                data.var_to_grouped_var[vref] = ex_var
+    # sort the variables by parameter groups
+    if length(data.base_itrs) > 1
+        group_to_vrefs = Dict{Vector{Int}, Vector{InfiniteOpt.GeneralVariableRef}}()
+        for vref in vrefs
+            group_idxs = InfiniteOpt.parameter_group_int_indices(vref)
+            if !haskey(group_to_vrefs, group_idxs)
+                group_to_vrefs[group_idxs] = [vref]
+            else
+                push!(group_to_vrefs[group_idxs], vref)
             end
         end
-    elseif create_variable_groups
-        v1 = data[first(vrefs)]
-        num_vars = v1.length * length(vrefs)
-        ex_var = ExaModels.Variable((v1.size..., length(vrefs)), num_vars, v1.offset, :grouped_infvar, nothing)
+    else
+        group_idxs = InfiniteOpt.parameter_group_int_indices(first(vrefs))
+        group_to_vrefs = Dict(group_idxs => vrefs)
+    end
+    # add each group of variables in group_to_vrefs to the ExaCore
+    for (group_idxs, vrefs) in group_to_vrefs
+        itrs = map(i -> data.base_itrs[i], group_idxs)
+        dims = Tuple(length(itr) for itr in itrs)
+        core, ex_vars = ExaModels.add_var(core, dims..., length(vrefs), name = Val(:infvar))
+        offset = ex_vars.offset
         for vref in vrefs
-            data.var_to_grouped_var[vref] = ex_var
+            info = InfiniteOpt.core_object(vref).info # JuMP.VariableInfo
+            _ensure_continuous(info)
+            lb, ub, start = _get_variable_bounds_and_start(info, itrs)
+            vname = _get_name(vref, vref in drefs ? "deriv" : "infvar")
+            data.infvar_mappings[vref] = ExaModels.Variable(dims, length(lb), offset, vname, nothing)
+            copyto!(@view(core.lvar[offset+1:offset+length(lb)]), lb)
+            copyto!(@view(core.uvar[offset+1:offset+length(ub)]), ub)
+            copyto!(@view(core.x0[offset+1:offset+length(start)]), start)
+            offset += length(lb)
+            data.var_to_grouped_var[vref] = ex_vars
         end
     end
     return core
@@ -219,57 +198,43 @@ end
 function _add_parameter_functions(
     core::ExaModels.ExaCore,
     data::ExaMappingData,
-    inf_model::InfiniteOpt.InfiniteModel;
-    create_parameter_groups::Bool = false
+    inf_model::InfiniteOpt.InfiniteModel
     )  
     pfrefs = InfiniteOpt.all_parameter_functions(inf_model)
-    length(pfrefs) == 0 && return core
-    # sort by infinite parameter groups (required to capture repeated finite patterns)
-    if create_parameter_groups && length(data.base_itrs) > 1 
-        all_group_idxs = map(v -> InfiniteOpt.parameter_group_int_indices(v), pfrefs)
-        sorted_int_idxs = sortperm(all_group_idxs)
-        permute!(pfrefs, sorted_int_idxs)
-        permute!(all_group_idxs, sorted_int_idxs)
-        group_types = unique(all_group_idxs)
-        pfref_groups = Dict(t => InfiniteOpt.GeneralVariableRef[] for t in group_types)
-        for (pfref, group_idx) in zip(pfrefs, all_group_idxs)
-            push!(pfref_groups[group_idx], pfref)
-        end
-    end
-    # iterate and add each parameter function
-    for pfref in pfrefs
-        # gather the basic information
-        group_idxs = InfiniteOpt.parameter_group_int_indices(pfref)
-        pfunc = InfiniteOpt.core_object(pfref)
-        # compute the value for each support combination and store
-        itrs = map(i -> data.base_itrs[i], group_idxs)
-        dims = Tuple(length(itr) for itr in itrs)
-        vals = Array{Float64}(undef, dims...)
-        for i in Iterators.product(itrs...)
-            supp = [s for nt in i for s in Iterators.drop(values(nt), 1)]
-            vals[first.(i)...] = pfunc(supp)
-        end
-        # Register the parameter function values in the ExaCore & mapping data
-        core, new_par = ExaModels.add_par(core, vals)
-        data.param_mappings[pfref] = new_par
-    end
-    # process and store a grouped variable for each group of variables with common infinite parameter groups
-    if create_parameter_groups && length(data.base_itrs) > 1
-        for group_idx in group_types
-            group_pfrefs = pfref_groups[group_idx]
-            pf1 = data[first(group_pfrefs)]
-            num_pars = pf1.length * length(group_pfrefs)
-            ex_var = ExaModels.Parameter((pf1.size..., length(group_pfrefs)), num_pars, pf1.offset, nothing)
-            for pfref in group_pfrefs
-                data.var_to_grouped_var[pfref] = ex_var
+    iszero(length(pfrefs)) && return core 
+    # sort the parameter functions by parameter groups
+    if length(data.base_itrs) > 1
+        group_to_pfrefs = Dict{Vector{Int}, Vector{InfiniteOpt.GeneralVariableRef}}()
+        for pfref in pfrefs
+            group_idxs = InfiniteOpt.parameter_group_int_indices(pfref)
+            if !haskey(group_to_pfrefs, group_idxs)
+                group_to_pfrefs[group_idxs] = [pfref]
+            else
+                push!(group_to_pfrefs[group_idxs], pfref)
             end
         end
-    elseif create_parameter_groups
-        pf1 = data[first(pfrefs)]
-        num_pars = pf1.length * length(pfrefs)
-        ex_par = ExaModels.Parameter((pf1.size..., length(pfrefs)), num_pars, pf1.offset, nothing)
-        for pfref in pfrefs
-            data.var_to_grouped_var[pfref] = ex_par
+    else
+        group_idxs = InfiniteOpt.parameter_group_int_indices(first(pfrefs))
+        group_to_pfrefs = Dict(group_idxs => pfrefs)
+    end
+    # add each group of parameter functions to the ExaCore
+    for (group_idxs, group_pfrefs) in group_to_pfrefs
+        itrs = map(i -> data.base_itrs[i], group_idxs)
+        dims = Tuple(length(itr) for itr in itrs)
+        core, ex_pars = ExaModels.add_par(core, dims..., length(group_pfrefs))
+        offset = ex_pars.offset
+        for pfref in group_pfrefs
+            pfunc = InfiniteOpt.core_object(pfref)
+            lin_idxs = LinearIndices(dims)
+            vals = Vector{Float64}(undef, length(lin_idxs))
+            for i in Iterators.product(itrs...)
+                supp = [s for nt in i for s in Iterators.drop(values(nt), 1)]
+                vals[lin_idxs[first.(i)...]] = pfunc(supp)
+            end
+            copyto!(@view(core.θ[offset+1:offset+length(vals)]), vals)
+            data.param_mappings[pfref] = ExaModels.Parameter(dims, length(vals), offset, nothing)
+            offset += length(vals)
+            data.var_to_grouped_var[pfref] = ex_pars
         end
     end
     return core
@@ -626,7 +591,6 @@ end
 # Make dispatch type to pass the data needed by `make_reduced_expr`
 struct _DerivReductionBackendInfo <: InfiniteOpt.AbstractTransformationBackend
     data::ExaMappingData
-    group_constraints::Bool
     alias_map::Union{Nothing, Dict{InfiniteOpt.GeneralVariableRef, Symbol}}
 end
 
@@ -654,12 +618,8 @@ function InfiniteOpt.make_reduced_expr(
                 data_src[i] 
             end
             end for i in inds)
-        if dispatch_data.group_constraints
-            grouped_var = data.var_to_grouped_var[vref]
-            return grouped_var[idx_pars..., data_src[dispatch_data.alias_map[vref]]]
-        else
-            return ivar[idx_pars...]
-        end
+        grouped_var = data.var_to_grouped_var[vref]
+        return grouped_var[idx_pars..., data_src[dispatch_data.alias_map[vref]]]
     else # either an infinite variable or a derivative variable
         group_idxs = InfiniteOpt.parameter_group_int_indices(vref)
         idx_pars = (begin 
@@ -670,12 +630,8 @@ function InfiniteOpt.make_reduced_expr(
                 data_src[g_alias]
             end 
             end for i in group_idxs)
-        if dispatch_data.group_constraints
-            grouped_var = data.var_to_grouped_var[vref]
-            return grouped_var[idx_pars..., data_src[dispatch_data.alias_map[vref]]]
-        else
-            return data.infvar_mappings[vref][idx_pars...]
-        end
+        grouped_var = data.var_to_grouped_var[vref]
+        return grouped_var[idx_pars..., data_src[dispatch_data.alias_map[vref]]]
     end
 end
 
@@ -683,8 +639,7 @@ end
 function _add_derivative_approximations(
     core::ExaModels.ExaCore, 
     data::ExaMappingData,
-    inf_model::InfiniteOpt.InfiniteModel;
-    group_constraints::Bool = false
+    inf_model::InfiniteOpt.InfiniteModel
     )
     # group all the derivatives of the same order, method, and infinite parameter dependencies
     signature_to_derivs = Dict{
@@ -723,47 +678,28 @@ function _add_derivative_approximations(
         aliases = Tuple(Symbol("d_arg$i") for i in eachindex(arg_itrs))
         pref_itr = [(; srt_itr[i]..., zip(aliases, args)...) for (i, args...) in zip(idxs, arg_itrs...)]
         itrs = Any[g == pref_group ? pref_itr : data.base_itrs[g] for g in group_idxs]
-        if group_constraints
-            push!(
-                itrs, 
-                [(; :grouped_didx => _get_grouped_idx(dref, data), 
-                    :grouped_vidx => _get_grouped_idx(vref, data)) 
-                    for (dref, vref) in zip(drefs, vrefs)
-                ])
-        end
+        push!(
+            itrs, 
+            [(; :grouped_didx => _get_grouped_idx(dref, data), 
+                :grouped_vidx => _get_grouped_idx(vref, data)) 
+                for (dref, vref) in zip(drefs, vrefs)
+            ])
         itr = length(itrs) > 1 ? vec([merge(i...) for i in Iterators.product(itrs...)]) : pref_itr
         # make the ExaModel expression tree and add the constraint(s)
         data_src = ExaModels.DataSource()
-        if group_constraints
-            alias_map = Dict(drefs[1] => :grouped_didx, vrefs[1] => :grouped_vidx)
-            em_expr = InfiniteOpt.make_indexed_derivative_expr(
-                drefs[1], 
-                vrefs[1],
-                pref,
-                order,
-                data_src[data.group_alias[pref_group]],
-                supps,
-                _DerivReductionBackendInfo(data, group_constraints, alias_map),
-                method,
-                (data_src[a] for a in aliases)...
-            )
-            core, _ = ExaModels.add_con(core, em_expr, itr)
-        else
-            for (dref, vref) in zip(drefs, vrefs)
-                em_expr = InfiniteOpt.make_indexed_derivative_expr(
-                    dref, 
-                    vref,
-                    pref, 
-                    order, 
-                    data_src[data.group_alias[pref_group]], 
-                    supps, 
-                    _DerivReductionBackendInfo(data, group_constraints, nothing),
-                    method,
-                    (data_src[a] for a in aliases)...
-                )
-                core, _ = ExaModels.add_con(core, em_expr, itr)
-            end
-        end
+        alias_map = Dict(drefs[1] => :grouped_didx, vrefs[1] => :grouped_vidx)
+        em_expr = InfiniteOpt.make_indexed_derivative_expr(
+            drefs[1], 
+            vrefs[1],
+            pref,
+            order,
+            data_src[data.group_alias[pref_group]],
+            supps,
+            _DerivReductionBackendInfo(data, alias_map),
+            method,
+            (data_src[a] for a in aliases)...
+        )
+        core, _ = ExaModels.add_con(core, em_expr, itr)
     end
     return core
 end
@@ -772,8 +708,7 @@ end
 function _add_collocation_restrictions(
     core::ExaModels.ExaCore, 
     data::ExaMappingData,
-    inf_model::InfiniteOpt.InfiniteModel;
-    group_constraints::Bool = false
+    inf_model::InfiniteOpt.InfiniteModel
     )
     for (pidx, vidxs) in inf_model.piecewise_vars
         # gather the basic information
@@ -805,30 +740,17 @@ function _add_collocation_restrictions(
             # prepare the iterator
             aliases = (data.group_alias[g] for g in group_idxs)
             itrs = (g == pref_group ? pref_itr : data.base_itrs[g] for g in group_idxs)
-            if group_constraints
-                finite_itr = [(; :grouped_vidx => _get_grouped_idx(vref, data)) for vref in vrefs]
-                itr = vec([merge(i...) for i in Iterators.product(itrs..., finite_itr)])
-            else
-                itr = vec([merge(i...) for i in Iterators.product(itrs...)])
-            end
+            finite_itr = [(; :grouped_vidx => _get_grouped_idx(vref, data)) for vref in vrefs]
+            itr = vec([merge(i...) for i in Iterators.product(itrs..., finite_itr)])
             # prepare the variable indices
             data_src = ExaModels.DataSource()
-            alias_tuple = group_constraints ? (aliases..., :grouped_vidx) : Tuple(aliases)
+            alias_tuple = (aliases..., :grouped_vidx)
             idx_pars1 = (a == pref_alias ? data_src[:i1] : data_src[a] for a in alias_tuple)
             idx_pars2 = (a == pref_alias ? data_src[:i2] : data_src[a] for a in alias_tuple)
             # create the ExaModel expression tree and add the constraint
-            if group_constraints
-                grouped_var = data.var_to_grouped_var[vrefs[1]]
-                em_expr = grouped_var[idx_pars1...] - grouped_var[idx_pars2...]
-                core, _ = ExaModels.add_con(core, em_expr, itr)
-            else
-                for vref in vrefs
-                    ivar = data.infvar_mappings[vref]
-                    em_expr = ivar[idx_pars1...] - ivar[idx_pars2...]
-                    core, _ = ExaModels.add_con(core, em_expr, itr)
-                end
-            end
-
+            grouped_var = data.var_to_grouped_var[vrefs[1]]
+            em_expr = grouped_var[idx_pars1...] - grouped_var[idx_pars2...]
+            core, _ = ExaModels.add_con(core, em_expr, itr)
         end
     end
     return core
@@ -1029,30 +951,10 @@ function build_exa_core!(
     # initial setup
     _build_base_iterators(data, inf_model)
     # add the variables and appropriate mappings
-    core = _add_finite_parameters(
-        core,
-        data,
-        inf_model,
-        create_parameter_groups = group_repeated_algebraic_patterns
-    )
-    core = _add_finite_variables(
-        core,
-        data,
-        inf_model,
-        create_variable_groups = group_repeated_algebraic_patterns
-    )
-    core = _add_infinite_variables( # includes derivatives
-        core,
-        data,
-        inf_model,
-        create_variable_groups = group_repeated_algebraic_patterns
-    )
-    core = _add_parameter_functions(
-        core,
-        data,
-        inf_model,
-        create_parameter_groups = group_repeated_algebraic_patterns
-    )
+    core = _add_finite_parameters(core, data, inf_model)
+    core = _add_finite_variables(core, data, inf_model)
+    core = _add_infinite_variables(core, data, inf_model)
+    core = _add_parameter_functions(core, data, inf_model)
     _add_semi_infinite_variables(core, data, inf_model)
     _add_point_variables(core, data, inf_model)
     # account for user-defined nonlinear operators
@@ -1066,18 +968,8 @@ function build_exa_core!(
     if group_repeated_algebraic_patterns
         num_ungrouped_constraints = length(core.cons) - num_grouped_constraints
     end
-    core = _add_derivative_approximations(
-        core,
-        data,
-        inf_model,
-        group_constraints = group_repeated_algebraic_patterns
-    )
-    core = _add_collocation_restrictions(
-        core,
-        data,
-        inf_model,
-        group_constraints = group_repeated_algebraic_patterns
-    )
+    core = _add_derivative_approximations(core, data, inf_model)
+    core = _add_collocation_restrictions(core, data, inf_model)
     # add the objective if there is one
     expr = JuMP.objective_function(inf_model)
     sense = JuMP.objective_sense(inf_model)
@@ -1169,12 +1061,14 @@ end
 function ExaModels.ExaModel(
     inf_model::InfiniteOpt.InfiniteModel;
     backend = nothing,
-    group_repeated_algebraic_patterns = false
+    group_repeated_algebraic_patterns = false,
+    concrete_core::Bool = false
 )
     return ExaModels.ExaModel(
         inf_model,
         ExaMappingData();
         backend = backend,
-        group_repeated_algebraic_patterns = group_repeated_algebraic_patterns
+        group_repeated_algebraic_patterns = group_repeated_algebraic_patterns,
+        concrete_core = concrete_core
     )
 end

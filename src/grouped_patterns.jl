@@ -87,7 +87,12 @@ end
 # Print a message about a group
 function _group_info_msg(group, msg)
     idxs = [JuMP.index(cref).value for cref in group]
-    @info "$msg constraint group with indices: $(idxs)"
+    if length(idxs) > 10
+        idx_list = "[" * join(idxs[1:4], ", ") * ", ..." * join(idxs[end-4:end], ", ") * "]"
+    else
+        idx_list = "[" * join(idxs, ", ") * "]"
+    end
+    @info "$msg constraint group of $(length(group)) members with indices: $(idx_list)"
     return
 end
 
@@ -219,43 +224,6 @@ function _process_candidate_constraint_group(
         sliced_itr = itr[base_idx:base_idx + inf_len - 1]
         offset = con.offset + base_idx - 1
         data.constraint_mappings[cref] = ExaModels.Constraint(con.f, sliced_itr, offset, (inf_len,), nothing)
-    end
-    return core
-end
-
-# Iterate over constraints in the InfiniteOpt model, group by algebraic pattern, and add to the ExaModels core
-function _group_and_add_constraints(
-    core::ExaModels.ExaCore,
-    data::ExaMappingData,
-    inf_model::InfiniteOpt.InfiniteModel
-    )
-    # set up dictionaries for tracking patterns
-    hash_to_patterns = Dict{UInt, Tuple{Vector{Vector{InfiniteOpt.GeneralVariableRef}}, Vector{Vector{Float64}}, Vector{_MOI.AbstractSet}}}()
-    hash_to_constrs = Dict{UInt, Vector{InfiniteOpt.InfOptConstraintRef}}()
-    # iterate over constraints and group by hashed algebraic pattern
-    for cref in JuMP.all_constraints(inf_model)
-        InfiniteOpt.is_variable_domain_constraint(cref) && continue
-        isempty(JuMP.owner_model(cref).constraints[JuMP.index(cref)].measure_indices) || continue # TODO: temporary restriction
-        expr = JuMP.jump_function(JuMP.constraint_object(cref))
-        expr isa JuMP.AbstractJuMPScalar || continue
-        h, vrefs, consts = _encode_expr(expr)
-        if haskey(hash_to_patterns, h)
-            push!(hash_to_patterns[h][1], vrefs)
-            push!(hash_to_patterns[h][2], consts)
-            push!(hash_to_patterns[h][3], JuMP.moi_set(JuMP.constraint_object(cref)))
-            push!(hash_to_constrs[h], cref)
-        else
-            hash_to_patterns[h] = ([vrefs], [consts], [JuMP.moi_set(JuMP.constraint_object(cref))])
-            hash_to_constrs[h] = [cref]
-        end
-    end
-    # process each grouped pattern (requiring at least 2 constraints to be grouped)
-    for (h, crefs) in hash_to_constrs
-        if length(crefs) < 2
-            continue
-        end
-        core = _process_candidate_constraint_group(core, data, crefs, hash_to_patterns[h]...)
-        _group_info_msg(crefs, "Successfully added")
     end
     return core
 end

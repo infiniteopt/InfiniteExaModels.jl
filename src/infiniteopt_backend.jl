@@ -57,7 +57,7 @@ struct ExaMappingData
                 }
             }(),
             Dict{InfiniteOpt.GeneralVariableRef, Tuple}(),
-            Dict{InfiniteOpt.GeneralVariableRef, Union{ExaModels.Variable, ExaModels.Parameter}}(),
+            Dict{InfiniteOpt.GeneralVariableRef, Union{ExaModels.Variable, ExaModels.Parameter}}()
         )
     end
 end

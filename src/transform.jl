@@ -954,13 +954,40 @@ function _add_objective(
     ::InfiniteOpt.InfiniteModel;
     print_info::Bool = false
     )
-    # TODO should we check if there are a lot of terms? (use group_repeated_sums)
+    # identify groups of variable types to combine (skipping measures for now)
+    grouped_pairs = Dict{UInt, Tuple{Vector{InfiniteOpt.GeneralVariableRef}, Vector{Float64}}}()
     for (coef, vref) in JuMP.linear_terms(aff)
-        core = _add_objective_aff_term(core, coef, vref, data, print_info)
+        # TODO handle repeated measures
+        if vref.index_type == InfiniteOpt.MeasureIndex
+            core = _add_objective_aff_term(core, coef, vref, data, print_info)
+            continue
+        end
+        h = hash(_encode_variable(vref))
+        if !haskey(grouped_pairs, h)
+            grouped_pairs[h] = (Vector{InfiniteOpt.GeneralVariableRef}(), Vector{Float64}())
+        end
+        push!(grouped_pairs[h][1], vref)
+        push!(grouped_pairs[h][2], coef)
     end
-    c = JuMP.constant(aff)
-    if !iszero(c)
-        core, _ = ExaModels.add_obj(core, ExaModels.Null(c))
+    # add the grouped terms to the core
+    for (_, (vrefs, coefs)) in grouped_pairs
+        c1 = coefs[1]
+        v1 = vrefs[1]
+        # handle the case for nongrouped terms
+        if isone(length(vrefs)) 
+            core = _add_objective_aff_term(core, c1, v1, data, print_info)
+        else
+            expr_form = JuMP.GenericNonlinearExpr{InfiniteOpt.GeneralVariableRef}(:*, c1, v1)
+            expr, itr = _process_grouped_expression(expr_form, [[v] for v in vrefs], coefs, data)
+            core, _ = ExaModels.add_obj(core, expr, itr)
+            if print_info
+                @info "Successfully grouped $(length(vrefs)) affine terms into one objective pattern."
+            end
+        end
+    end
+    # account for constant term if there is one
+    if !iszero(JuMP.constant(aff))
+        core, _ = ExaModels.add_obj(core, ExaModels.Null(JuMP.constant(aff)))
     end
     return core
 end
@@ -971,6 +998,8 @@ function _add_objective(
     inf_model::InfiniteOpt.InfiniteModel;
     print_info::Bool = false
     )
+    # set up dictionaries for tracking patterns
+    hash_to_patterns = Dict{UInt, Tuple{Vector{Vector{InfiniteOpt.GeneralVariableRef}}, Vector{Vector{Float64}}}}()
     # process the quadratic terms
     for (coef, vref1, vref2) in JuMP.quad_terms(quad)
         if vref1.index_type == InfiniteOpt.MeasureIndex && vref2.index_type == InfiniteOpt.MeasureIndex
@@ -978,14 +1007,40 @@ function _add_objective(
             @warn _ObjMeasureExpansionWarn
             new_expr = InfiniteOpt.expand_measures(coef * vref1 * vref2, inf_model)
             core = _add_generic_objective_term(core, new_expr, data)
-        elseif vref1.index_type == InfiniteOpt.MeasureIndex
+        elseif vref1.index_type == InfiniteOpt.MeasureIndex # TODO: add grouping support
             core = _add_objective_aff_term(core, coef * vref2, vref1, data, print_info)
-        else
+        elseif vref2.index_type == InfiniteOpt.MeasureIndex # TODO: add grouping support
             core = _add_objective_aff_term(core, coef * vref1, vref2, data, print_info)
+        else
+            expr = JuMP.GenericNonlinearExpr{InfiniteOpt.GeneralVariableRef}(:*, coef, vref1, vref2)
+            h, vrefs, coefs = _encode_expr(expr)
+            if !haskey(hash_to_patterns, h)
+                hash_to_patterns[h] = (Vector{Vector{InfiniteOpt.GeneralVariableRef}}(), Vector{Vector{Float64}}())
+            end
+            push!(hash_to_patterns[h][1], vrefs)
+            push!(hash_to_patterns[h][2], coefs)
+        end
+    end
+    # process the grouped quadratic patterns
+    for (h, (vrefs_list, coefs_list)) in hash_to_patterns
+        c1 = coefs_list[1][1]
+        v1 = vrefs_list[1][1]
+        v2 = vrefs_list[1][2]
+        if isone(length(vrefs_list)) 
+            vrefs = vrefs_list[1]
+            coefs = coefs_list[1]
+            core = _add_objective_aff_term(core, coefs[1][1] * vrefs[1][1], vrefs[1][2], data, print_info)
+        else
+            expr_form = JuMP.GenericNonlinearExpr{InfiniteOpt.GeneralVariableRef}(:*, c1, v1, v2)
+            expr, itr = _process_grouped_expression(expr_form, vrefs_list, coefs_list, data)
+            core, _ = ExaModels.add_obj(core, expr, itr)
+            if print_info
+                @info "Successfully grouped $(length(vrefs_list)) quadratic terms into one objective pattern."
+            end
         end
     end
     # add the affine terms
-    core = _add_objective(core, quad.aff, data, inf_model)
+    core = _add_objective(core, quad.aff, data, inf_model, print_info = print_info)
     return core
 end
 # TODO add heuristics for nonlinear expressions

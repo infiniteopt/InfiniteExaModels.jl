@@ -812,7 +812,7 @@ end
 const _ObjMeasureExpansionWarn = string(
     "Unable to convert objective measures into a form that is ",
     "efficient for ExaModels using existing heuristics. Performance ",
-    "may be significantly degraded. Try simplying the objective structure. ",
+    "may be significantly degraded. Try simplifying the objective structure be be contained within a single measure. ",
     "if you think this form should be supported, please open an issue."
 )
 
@@ -906,7 +906,7 @@ function _add_objective_aff_term(core, coef, vref, ::Type{InfiniteOpt.MeasureInd
     exafied_expr, finite_itr = _process_candidate_sum_group(mexpr, data)
     if length(finite_itr) > 1
         if print_info
-            @info "Successfully grouped $(length(finite_itr)) finite terms together into a single objective pattern."
+            @info "Successfully grouped $(length(finite_itr)) terms inside a measure together into a finite sum."
         end
         final_itr = vec([merge(i...) for i in Iterators.product(itr, finite_itr)])
     else

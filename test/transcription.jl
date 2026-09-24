@@ -117,9 +117,9 @@ end
     @test transformation_variable(x, exaBackend) == xMapping
     @test transformation_variable(y[1], exaBackend) == y1Mapping
     @test transformation_variable(y[2], exaBackend) == y2Mapping
-    @test InfiniteExaModels._map_variable(x, x.index_type, 0, exaData) isa ExaModels.ParameterNode{Int}
-    @test InfiniteExaModels._map_variable(y[1], y[1].index_type, 0, exaData) isa ExaModels.ParameterNode{Int}
-    @test InfiniteExaModels._map_variable(y[2], y[2].index_type, 0, exaData) isa ExaModels.ParameterNode{Int}
+    @test InfiniteExaModels._map_variable(x, x.index_type, exaData) isa ExaModels.ParameterNode{Int}
+    @test InfiniteExaModels._map_variable(y[1], y[1].index_type, exaData) isa ExaModels.ParameterNode{Int}
+    @test InfiniteExaModels._map_variable(y[2], y[2].index_type, exaData) isa ExaModels.ParameterNode{Int}
     @test length(exaModel.θ) == 3
     @test exaModel.θ[xMapping.offset + 1] == 42
     @test exaModel.θ[y1Mapping.offset + 1] == yVals[1]

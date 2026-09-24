@@ -28,4 +28,3 @@ constant_over_collocation.(u, t) # needed for collocation
 
 # Solve
 optimize!(im)
-

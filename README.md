@@ -41,6 +41,23 @@ using InfiniteOpt, InfiniteExaModels, MadNLP, CUDA # be sure to install CUDSS fi
 model = InfiniteModel(ExaTranscriptionBackend(MadNLPSolver, backend = CUDABackend()))
 ```
 
+### Supported Formulations and Performance Recommendations
+InfiniteExaModels supports continuous nonlinear programs with scalar constraints (i.e., no vector constraints).
+Since InfiniteExaModels works by automatically recognizing repeated algebraic patterns in `InfiniteModel`s to 
+setup an `ExaModel` which is efficient with a modest number of recognized patterns that each are not large. As
+such, performance can signficantly degrade or a stack overflow may occur when certain patterns are not recongnized.
+Best practice is to do the following:
+- Define objectives with nonlinear terms inside of measures (e.g., integrals) (e.g., avoid forms like `sin(z) * integral(y, t)`, do `integral(sin(z) * y, t)` instead)
+- For nested measures in objectives, locate the expression in the innermost measure (e.g., avoid forms like `integral(y * integral(q, x), t)`, do `integral(integral( y * q, x), t)` instead)
+- If you need to measure many terms in an objective, use the form `integral(sum(@force_nonlinear(my_expr)), t)` (i.e., use a measure of a sum of nonlinear terms, avoid a sum of measures `sum(integral(my_expr))`)
+- Avoid having measures or large sums in constraints
+- Avoid having constraints or objetives that iterate/sum over a large collection of infinite parameters
+If you have a compelling use case that cannot work with the above conditions, please let us know by opening an issue and we will see what we can do.
+To understand how your the `ExaModel` is being built, use `print_build_info = true`:
+```julia
+optimize!(model, print_build_info = true)
+```
+
 ## Citation
 If this is useful for your work please consider citing it:
 ```latex

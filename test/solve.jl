@@ -132,7 +132,7 @@ end
     @finite_parameter(m, p == 1.0)
     @parameter_function(m, pf == sin(t))
     @finite_parameter(m, p2 == 3.0)
-    @objective(m, Min, ∫(∫((q - p2)^2, t), x))
+    @objective(m, Min, ∫(∫((q - p2)^2, t), x) + 3u(0)^2)
     @constraint(m, c1[i in 1:3], ∂(y[i], t) == p*∂(y[i], x, x) + u * pf)
     @constraint(m, c2[i in 1:3], y[i](0, x) == 0.1*i)
     @constraint(m, c3[i in 1:3], y[i](t, 0) == z[i], DomainRestriction(s -> s != 0, t))

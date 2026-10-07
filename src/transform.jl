@@ -812,7 +812,7 @@ end
 const _ObjMeasureExpansionWarn = string(
     "Unable to convert objective measures into a form that is ",
     "efficient for ExaModels using existing heuristics. Performance ",
-    "may be significantly degraded. Try simplifying the objective structure be be contained within a single measure. ",
+    "may be significantly degraded. Try moving objective terms inside the innermost measure (e.g., integral) if possible. ",
     "if you think this form should be supported, please open an issue."
 )
 
@@ -823,7 +823,7 @@ function _add_generic_objective_term(core, expr, data)
 end
 
 # Helper function for generate an iterator based on measure data 
-function _make_measure_itr(mdata, data)
+function _make_measure_itr(mdata, data) 
     prefs = InfiniteOpt.parameter_refs(mdata) # either a single ref or a vector of refs
     if prefs isa Vector
         supps = eachcol(InfiniteOpt.supports(mdata))
@@ -993,7 +993,7 @@ function _add_objective(
 end
 function _add_objective(
     core::ExaModels.ExaCore,
-    quad::InfiniteOpt.GenericQuadExpr,
+    quad::JuMP.GenericQuadExpr,
     data::ExaMappingData, 
     inf_model::InfiniteOpt.InfiniteModel;
     print_info::Bool = false

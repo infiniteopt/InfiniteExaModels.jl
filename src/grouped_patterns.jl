@@ -88,7 +88,7 @@ end
 function _group_info_msg(group, msg)
     idxs = [JuMP.index(cref).value for cref in group]
     if length(idxs) > 10
-        idx_list = "[" * join(idxs[1:4], ", ") * ", ..." * join(idxs[end-4:end], ", ") * "]"
+        idx_list = "[" * join(idxs[1:4], ", ") * ", ..., " * join(idxs[end-4:end], ", ") * "]"
     else
         idx_list = "[" * join(idxs, ", ") * "]"
     end

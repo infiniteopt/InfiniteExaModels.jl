@@ -1029,7 +1029,7 @@ function _add_objective(
         if isone(length(vrefs_list)) 
             vrefs = vrefs_list[1]
             coefs = coefs_list[1]
-            core = _add_objective_aff_term(core, coefs[1][1] * vrefs[1][1], vrefs[1][2], data, print_info)
+            core = _add_objective_aff_term(core, coefs[1] * vrefs[1], vrefs[2], data, print_info)
         else
             expr_form = JuMP.GenericNonlinearExpr{InfiniteOpt.GeneralVariableRef}(:*, c1, v1, v2)
             expr, itr = _process_grouped_expression(expr_form, vrefs_list, coefs_list, data)
